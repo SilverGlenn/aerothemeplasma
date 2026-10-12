@@ -710,18 +710,6 @@ PlasmaExtras.Menu {
             }
 
             PlasmaExtras.MenuItem {
-                enabled: menu.visualParent && menu.get(atm.IsShadeable)
-
-                checkable: true
-                checked: menu.visualParent && menu.get(atm.IsShaded)
-
-                text: i18n("&Shade")
-                icon: "window-shade"
-
-                onClicked: tasksModel.requestToggleShaded(menu.modelIndex)
-            }
-
-            PlasmaExtras.MenuItem {
                 separator: true
             }
 

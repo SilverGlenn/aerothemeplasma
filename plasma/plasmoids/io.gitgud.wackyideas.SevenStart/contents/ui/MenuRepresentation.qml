@@ -49,7 +49,7 @@ PlasmaCore.Dialog {
 	appletInterface: kicker
 
 	title: "aeroshell-menurepresentation"
-    
+
 	shadowBordersSync: false
 	shadowEnabled: Plasmoid.configuration.enableShadow
 	marginsEnabled: false

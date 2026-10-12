@@ -30,6 +30,14 @@ Item {
     property string orbTexture: getResolvedUrl(Plasmoid.configuration.customButtonImage, "orbs/orb" + (stickOutOrb ? "_small" : "") + ".png")
     property int opacityDuration: 300
 
+    function getResolvedUrl(url, fallback) {
+
+        if (url.toString() === "" || !Plasmoid.fileExists(url)) {
+            return Qt.resolvedUrl(fallback);
+        }
+        return url;
+    }
+
     Image {
         id: buttonIconSizes
         smooth: true

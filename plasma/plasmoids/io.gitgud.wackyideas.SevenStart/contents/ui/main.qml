@@ -47,8 +47,17 @@ PlasmoidItem {
     toolTipMainText: i18n("Start")
     toolTipSubText: ""
 
+    // If the url is empty (default value), then use the fallback url. Otherwise, return the url path relative to
+    // the location of the source code.
+    function getResolvedUrl(url, fallback) {
+
+        if (url.toString() === "" || !Plasmoid.fileExists(url)) {
+            return Qt.resolvedUrl(fallback);
+        }
+        return url;
+    }
+
     CompactRepresentation { id: compactRepresentation; anchors.fill: parent }
-    //MenuRepresentation { id: menuRepresentation }
 
     // Used to run separate programs through this plasmoid.
     Plasma5Support.DataSource {

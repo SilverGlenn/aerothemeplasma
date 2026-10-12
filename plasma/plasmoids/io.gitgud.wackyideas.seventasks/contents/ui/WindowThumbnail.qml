@@ -286,8 +286,10 @@ MouseArea {
                 sourceComponent: minimized ? appIcon : (tasks.toolTipOpen ? waylandThumbnail : undefined)
 
                 onLoaded: {
-                    if(sourceComponent !== x11Thumbnail) thumbnailRoot.thumbnailHeight = thumbnailLoader.height;
-                    if(isGroupDelegate && ListView.view !== null) ListView.view.updateMaxSize()
+                    thumbnailRoot.thumbnailHeight = thumbnailLoader.height;
+                    if (isGroupDelegate && ListView.view !== null) {
+                        ListView.view.updateMaxSize()
+                    }
                 }
 
                 Component {
