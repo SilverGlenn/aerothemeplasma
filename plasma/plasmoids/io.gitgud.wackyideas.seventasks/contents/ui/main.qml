@@ -127,11 +127,7 @@ PlasmoidItem {
 
     property int pulseAudioUsers: 0
 
-    property bool compositionEnabled: {
-        if(KWindowSystem.isPlatformX11) {
-            return KX11Extras.compositingActive;
-        } else return true; // Composition is always enabled in Wayland
-    }
+    property bool compositionEnabled: true
 
     function acquirePulseAudioMonitoring() {
         ++pulseAudioUsers;

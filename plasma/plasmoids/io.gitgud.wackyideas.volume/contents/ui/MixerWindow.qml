@@ -25,8 +25,8 @@ Window {
 
     KDecoration.Bridge {
         id: bridgeItem
-        plugin: KWindowSystem.isPlatformWayland ? Plasmoid.getDecorationPluginName() : "";
-        theme:  KWindowSystem.isPlatformWayland ? Plasmoid.getDecorationThemeName() : "";
+        plugin: Plasmoid.getDecorationPluginName();
+        theme: Plasmoid.getDecorationThemeName();
     }
     KDecoration.Settings {
         id: settingsItem
@@ -57,13 +57,12 @@ Window {
                 x = pos.x - mixer.width;
                 y = pos.y - mixer.height / 2;
             }
-            if(KWindowSystem.isPlatformWayland) {
-                var wl_width = mixer.width + decorationMetrics.decoration.borderLeft + decorationMetrics.decoration.borderRight
-                var wl_height = mixer.height + decorationMetrics.decoration.borderTop + decorationMetrics.decoration.borderBottom
-                var wl_x = Math.max(availScreen.x, Math.min(x, availScreen.width-wl_width));
-                var wl_y = Math.max(availScreen.y, Math.min(y, availScreen.height-wl_height));
-                Plasmoid.setPopupPosition(mixer, wl_x, wl_y);
-            }
+
+            var wl_width = mixer.width + decorationMetrics.decoration.borderLeft + decorationMetrics.decoration.borderRight
+            var wl_height = mixer.height + decorationMetrics.decoration.borderTop + decorationMetrics.decoration.borderBottom
+            var wl_x = Math.max(availScreen.x, Math.min(x, availScreen.width-wl_width));
+            var wl_y = Math.max(availScreen.y, Math.min(y, availScreen.height-wl_height));
+            Plasmoid.setPopupPosition(mixer, wl_x, wl_y);
         }
     }
 

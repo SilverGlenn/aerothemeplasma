@@ -187,7 +187,7 @@ Item {
                 }
                 case 5: {
                     addWatermark(0, "AeroThemePlasma", false, "FFFFFF", 2);
-                    addWatermark(0, "Build 6.5.0", false, "FFFFFF", 2);
+                    addWatermark(0, "Build 6.8.0", false, "FFFFFF", 2);
                     break;
                 }
             }

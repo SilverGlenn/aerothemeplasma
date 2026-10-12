@@ -22,9 +22,9 @@ import QtQuick.Layouts 1.1
 
 import org.kde.plasma.plasmoid 2.0
 import org.kde.plasma.core 2.0 as PlasmaCore
-import org.kde.kwindowsystem 1.0
 
 import org.kde.kirigami as Kirigami
+import org.kde.zones
 
 Item {
     id: root
@@ -87,25 +87,23 @@ Item {
     }
     function positionOrb() {
         var pos = kicker.mapToGlobal(floatingOrbPanel.x, floatingOrbPanel.y);
-        pos.y -= 5;
+        orb.width = floatingOrbPanel.scaledWidth;
+        var height = floatingOrbPanel.scaledHeight / 3;
         if(Plasmoid.configuration.offsetFloatingOrb) {
-            pos.y += 3;
+            height -= 5;
+            pos.y += 5;
+            orb.mainItem.offset = 5;
         }
-        orb.width = floatingOrbPanel.scaledWidth
-        orb.height = floatingOrbPanel.scaledHeight / 3;
-        if(orb.height === 30) {
-            pos.y += 2;
-        }
+        orb.height = height;
 
-        orb.x = pos.x;
-        orb.y = pos.y;
+        orbPos = pos;
+
+        orb.ZoneItemAttached.requestPosition(orbPos);
     }
     function showMenu() {
         dashWindow.visible = !dashWindow.visible;
         dashWindow.showingAllPrograms = false;
-        if(KWindowSystem.isPlatformX11) Plasmoid.setActiveWin(dashWindow);
         dashWindow.m_searchField.focus = true;
-        orb.raise();
     }
     function updateSizeHints() {
         return;
@@ -143,7 +141,6 @@ Item {
 
     Component.onCompleted: {
         dashWindow = Qt.createQmlObject("MenuRepresentation {}", kicker);
-        orb = Qt.createQmlObject("StartOrb {}", kicker);
 
         orbTimer.start();
         Plasmoid.activated.connect(function () {
@@ -224,34 +221,29 @@ Item {
         z: 99
     }
 
-    // I hate this
+    PlasmaCore.Dialog {
+        id: orb
 
-    // So the only way I could reasonably think of to make this work is running the function
-    // with a delay.
-    Timer {
-        id: compositingFix
+        ZoneItemAttached.zone: kicker.ZoneItemAttached.zone
 
-        interval: 150
+        flags: Qt.WindowTransparentForInput | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+        title: "__AEROSHELL_STARTORB"
+        type: "Notification"
+        backgroundHints: PlasmaCore.Types.NoBackground
 
-        onTriggered: {
-            if (!compositing) {
-                Plasmoid.setTransparentWindow();
-            }
+        visible: stickOutOrb
+
+        mainItem: FloatingOrb {
+            id: floatingOrbIcon
         }
     }
 
-    // Even worse, this just makes things even more unsophisticated. If someone has a better
-    // way of solving this, I would love to know.
     Timer {
         id: orbTimer
 
         interval: 15
 
         onTriggered: {
-
-            Plasmoid.setOrb(orb);
-            // Currently hardcoded, will make it configurable soon, when it's been properly tested and hopefully slightly refactored.
-            Plasmoid.setMask(Qt.resolvedUrl("./orbs/mask.png"), false);
             updateSizeHints();
             positionOrb();
         }

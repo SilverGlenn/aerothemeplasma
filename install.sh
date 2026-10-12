@@ -1,7 +1,7 @@
 #!/bin/bash
 CUR_DIR=${PWD}
 
-BRANCH_VERSION="Plasma/6.7"
+BRANCH_VERSION="Plasma/6.8"
 
 SU_CMD=sudo
 if [[ -z "$(command -v $SU_CMD)" ]]; then
@@ -57,14 +57,6 @@ cmake -DCMAKE_INSTALL_PREFIX=/usr -B build . || exit 1
 cmake --build build || exit 1
 $SU_CMD cmake --install build || exit 1
 cp build/install_manifest.txt "$CUR_DIR/manifest/smod_install_manifest.txt"
-
-if [[ ! "$*" == *"--skip-x11"* ]]
-then
-    cmake -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_DECORATION=OFF -DBUILD_EFFECTX11=ON -B build-x11 . || exit 1
-    cmake --build build-x11 || exit 1
-    $SU_CMD cmake --install build-x11 || exit 1
-    cp build-x11/install_manifest.txt "$CUR_DIR/manifest/smodglow-x11_install_manifest.txt"
-fi
 cd "$CUR_DIR/repos"
 
 # Aeroshell Workspace
@@ -88,13 +80,6 @@ cmake -DCMAKE_INSTALL_PREFIX=/usr -DKWIN_BUILD_WAYLAND=ON -B build . || exit 1
 cmake --build build || exit 1
 $SU_CMD cmake --install build || exit 1
 cp build/install_manifest.txt "$CUR_DIR/manifest/aeroshell-kwin-components_install_manifest.txt"
-if [[ ! "$*" == *"--skip-x11"* ]]
-then
-    cmake -DCMAKE_INSTALL_PREFIX=/usr -DKWIN_BUILD_WAYLAND=OFF -DKWIN_INSTALL_MISC=OFF -B build_x11 . || exit 1
-    cmake --build build_x11 || exit 1
-    $SU_CMD cmake --install build_x11 || exit 1
-    cp build_x11/install_manifest.txt "$CUR_DIR/manifest/aeroshell-kwin-components-x11_install_manifest.txt"
-fi
 cd "$CUR_DIR/repos"
 
 # Aeroshell SDDM KCM
@@ -134,13 +119,6 @@ cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBEXECDIR=$LIBEXEC_DIR -B bui
 cmake --build build || exit 1
 $SU_CMD cmake --install build || exit 1
 cp build/install_manifest.txt "$CUR_DIR/manifest/aerothemeplasma_install_manifest.txt"
-if [[ ! "$*" == *"--skip-x11"* ]]
-then
-    cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBEXECDIR=$LIBEXEC_DIR -DINSTALL_X11_COMPONENTS=ON -B build_x11 . || exit 1
-    cmake --build build_x11 || exit 1
-    $SU_CMD cmake --install build_x11 || exit 1
-    cp build_x11/install_manifest.txt "$CUR_DIR/manifest/aerothemeplasma-x11_install_manifest.txt"
-fi
 cd "$CUR_DIR/repos"
 
 

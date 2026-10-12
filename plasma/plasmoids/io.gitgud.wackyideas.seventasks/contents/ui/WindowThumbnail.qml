@@ -9,9 +9,7 @@ import org.kde.kirigami as Kirigami
 import org.kde.ksvg as KSvg
 import org.kde.pipewire as PipeWire
 import org.kde.taskmanager as TaskManager
-import org.kde.kwindowsystem
 
-import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasmoid
 import org.kde.plasma.private.mpris as Mpris
 
@@ -285,33 +283,11 @@ MouseArea {
 
                 active: true
                 asynchronous: true
-                sourceComponent: minimized ? appIcon : (KWindowSystem.isPlatformWayland ? (tasks.toolTipOpen ? waylandThumbnail : undefined) : x11Thumbnail)
+                sourceComponent: minimized ? appIcon : (tasks.toolTipOpen ? waylandThumbnail : undefined)
 
                 onLoaded: {
                     if(sourceComponent !== x11Thumbnail) thumbnailRoot.thumbnailHeight = thumbnailLoader.height;
                     if(isGroupDelegate && ListView.view !== null) ListView.view.updateMaxSize()
-                }
-
-                Component {
-                    id: x11Thumbnail
-
-                    PlasmaCore.WindowThumbnail {
-                        winId: windows !== undefined ? windows[0] : undefined
-
-                        onPaintedSizeChanged: thumbnailRoot.thumbnailHeight = paintedHeight;
-
-                        Rectangle {
-                            anchors.centerIn: parent
-
-                            width: parent.paintedWidth+2
-                            height: parent.paintedHeight+2
-                            color: "transparent"
-                            border.width: 1
-                            border.color: "black"
-
-                            opacity: 0.5
-                        }
-                    }
                 }
 
                 Component {

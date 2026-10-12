@@ -34,7 +34,6 @@ import org.kde.plasma.private.kicker as Kicker
 import org.kde.coreaddons 1.0 as KCoreAddons // kuser
 import org.kde.kitemmodels as KItemModels
 
-import org.kde.kwindowsystem 1.0
 import org.kde.ksvg as KSvg
 import org.kde.plasma.plasma5support as Plasma5Support
 import org.kde.kirigami as Kirigami
@@ -130,12 +129,9 @@ PlasmaCore.Dialog {
 
     onSearchingChanged: {
         if (!searching) {
-			if(!KWindowSystem.isPlatformX11) {
-				root.hideOnWindowDeactivate = false;
-				wayland_fix.start();
-			}
+			root.hideOnWindowDeactivate = false;
+			wayland_fix.start();
 			reset();
-
         }
     }
     

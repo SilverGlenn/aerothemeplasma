@@ -11,7 +11,6 @@ import QtQuick.Layouts
 import QtQuick.Controls as QtControls
 
 import org.kde.notification
-import org.kde.kwindowsystem as KWindowSystem
 import org.kde.plasma.components as PlasmaComponents3
 import org.kde.plasma.extras as PlasmaExtras
 import org.kde.ksvg as KSvg
@@ -153,7 +152,7 @@ QtControls.ItemDelegate {
                         required property bool active
                         required property bool allowed
                         Layout.fillWidth: true
-                        iconSource: icon || (KWindowSystem.KWindowSystem.isPlatformWayland ? "wayland" : "xorg")
+                        iconSource: icon || "wayland"
                         text: {
                             if (!allowed) {
                                 return i18nc("Application name; reason", "%1 has been prevented from blocking sleep and screen locking for %2", root.baseName(prettyName), reason)
@@ -214,7 +213,7 @@ QtControls.ItemDelegate {
 
                     InhibitionHint {
                         property string icon: modelData.Icon
-                            || (KWindowSystem.isPlatformWayland ? "wayland" : "xorg")
+                            || "wayland"
                         property string app: modelData.Name
                         property string name: modelData.PrettyName
                         property string reason: modelData.Reason

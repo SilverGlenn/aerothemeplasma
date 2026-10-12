@@ -155,13 +155,14 @@ PlasmaCore.Dialog {
         }
     }
     onHeightChanged: {
-        if(KWindowSystem.isPlatformWayland) setPopupPosition();
+        setPopupPosition();
     }
     function setPopupPosition() {
         var globalPos = parent.mapToGlobal(tasks.x, tasks.y);
         var screen = tasks.screenGeometry;
 
-        tasksMenu.y = globalPos.y - tasksMenu.height - ((menuitems.isEmpty() && KWindowSystem.isPlatformWayland) ? Kirigami.Units.smallSpacing*3 : 0); // Wayland bugs out with small jumplists for some reason
+        // Wayland bugs out with small jumplists for some reason
+        tasksMenu.y = globalPos.y - tasksMenu.height - (menuitems.isEmpty() ? Kirigami.Units.smallSpacing*3 : 0);
 
         var parentPos = parent.mapToGlobal(taskX, taskY);
         xpos = parentPos.x + taskWidth / 2;
