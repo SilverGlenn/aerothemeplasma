@@ -42,8 +42,8 @@ Item {
 
     function beginAuth() {
         if(!authenticator.graceLocked && password.enabled) {
-            authenticator.startAuthenticating();
             pageView.replaceCurrentItem(welcomePage);
+            authenticator.respond(password.text);
         }
     }
 
@@ -107,25 +107,22 @@ Item {
             // If this is coming from the noninteractive authenticators
             if(kind != 0) return;
             showMessage(i18nd("kscreenlocker_greet", "The user name or password is incorrect."), "dialog-error");
-        }
-        function onBusyChanged() {
-            /*if(!authenticator.busy && !statusPage.visible) {
-                root.notification = "";
-                root.notificationIcon = "";
-            }*/
+            authenticator.startAuthenticating();
         }
         function onInfoMessageChanged() {
+            if (authenticator.infoMessage == "") {
+                return;
+            }
             showMessage(authenticator.infoMessage, "dialog-information");
         }
         function onErrorMessageChanged() {
+            if (authenticator.errorMessage == "") {
+                return;
+            }
             showMessage(authenticator.errorMessage, "dialog-error");
         }
-        function onPromptForSecretChanged() {
-            if(authenticator.promptForSecret && !authenticator.busy) {
-                authenticator.respond(password.text);
-            }
-        }
         function onSucceeded() {
+            keepActiveTimer.stop();
             lockSuccess.play();
             fadeExitDelay.start();
         }
@@ -181,6 +178,14 @@ Item {
     Component.onCompleted: {
         executable.exec("kreadconfig6 --file ~/.config/kdeglobals --group Sounds --key Theme");
         root.resetFocus();
+        keepActiveTimer.running = true;
+    }
+
+    Timer {
+        id: keepActiveTimer
+        repeat: true
+        interval: 1000
+        onTriggered: authenticator.startAuthenticating();
     }
 
     Timer {
@@ -352,7 +357,6 @@ Item {
                                 anchors.fill: parent
 
                                 hoverEnabled: true
-                                enabled: !authenticator.busy
                                 onClicked: root.beginAuth();
                             }
                         }
