@@ -174,11 +174,9 @@ FocusScope {
             main.generateDragImage();
         }
 
-        function onHasRefreshed(isExplicit) {
-            if(isExplicit) {
-                gridView.visible = false;
-                refreshGridView.start();
-            }
+        function onHasRefreshed() {
+            gridView.visible = false;
+            refreshGridView.start();
         }
     }
     Timer {
@@ -1408,7 +1406,6 @@ FocusScope {
                 : (gridView.height / gridView.cellHeight))
 
             Component.onCompleted: {
-                positioner.updateResolution();
                 positioner.loadAndApplyPositionsConfig();
             }
 
