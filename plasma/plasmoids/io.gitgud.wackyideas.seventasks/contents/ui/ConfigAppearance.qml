@@ -21,6 +21,7 @@ KCM.SimpleKCM {
     property alias cfg_highlightWindows: highlightWindows.checked
     property alias cfg_thmbnlCaptionAlignment: thmbnlCaptionAlignment.currentIndex
     property alias cfg_showMuteBtn: showMuteBtn.checked
+    property alias cfg_showNotificationBadges: showNotificationBadges.checked
 
     property alias cfg_showLabels: showLabels.checked
     property alias cfg_disableHottracking: disableHottracking.checked
@@ -90,7 +91,7 @@ KCM.SimpleKCM {
                 }
                 CheckBox {
                     id: showMuteBtn
-                    text: i18n("Show mute button when an app is playing audio")
+                    text: i18n("Show audio mute button (KDE extension)")
                 }
             }
         }
@@ -108,6 +109,10 @@ KCM.SimpleKCM {
                 CheckBox {
                     id: showLabels
                     text: i18n("Show labels next to task icons")
+                }
+                CheckBox {
+                    id: showNotificationBadges
+                    text: i18n("Show numeric notification badges (KDE extension)")
                 }
                 CheckBox {
                     id: disableHottracking

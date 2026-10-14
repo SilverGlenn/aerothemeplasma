@@ -14,34 +14,34 @@
 var taskManagerInstanceCount = 0;
 
 function activateNextPrevTask(anchor, next, wheelSkipMinimized, tasks) {
-    // FIXME TODO: Unnecessarily convoluted and costly; optimize.
-
     let taskIndexList = [];
     const activeTaskIndex = tasks.tasksModel.activeTask;
 
-    for (let i = 0; i < tasks.taskList.children.length - 1; ++i) {
-        const task = tasks.taskList.children[i];
-        const modelIndex = task.modelIndex(i);
+    for (let i = 0; i < tasks.tasksModel.count; ++i) {
+        const modelIndex = tasks.tasksModel.makeModelIndex(i);
+        const isLauncher = tasks.tasksModel.data(modelIndex, TaskManager.AbstractTasksModel.IsLauncher);
+        const isStartup = tasks.tasksModel.data(modelIndex, TaskManager.AbstractTasksModel.IsStartup);
+        const isAnchor = anchor && anchor.index === i;
 
-        if (!task.model.IsLauncher && !task.model.IsStartup) {
-            if (task.model.IsGroupParent) {
-                if (task === anchor) { // If the anchor is a group parent, collect only windows within the group.
+        if (!isLauncher && !isStartup) {
+            if (tasks.tasksModel.data(modelIndex, TaskManager.AbstractTasksModel.IsGroupParent)) {
+                if (isAnchor) { // If the anchor is a group parent, collect only windows within the group.
                     taskIndexList = [];
                 }
 
                 for (let j = 0; j < tasks.tasksModel.rowCount(modelIndex); ++j) {
                     const childModelIndex = tasks.tasksModel.makeModelIndex(i, j);
-                    const childHidden = tasks.tasksModel.data(childModelIndex, TaskManager.AbstractTasksModel.IsHidden);
-                    if (!wheelSkipMinimized || !childHidden) {
+                    const childMinimized = tasks.tasksModel.data(childModelIndex, TaskManager.AbstractTasksModel.IsMinimized);
+                    if (!wheelSkipMinimized || !childMinimized) {
                         taskIndexList.push(childModelIndex);
                     }
                 }
 
-                if (task === anchor) { // See above.
+                if (isAnchor) { // See above.
                     break;
                 }
             } else {
-                if (!wheelSkipMinimized || !task.model.IsHidden) {
+                if (!wheelSkipMinimized || !tasks.tasksModel.data(modelIndex, TaskManager.AbstractTasksModel.IsMinimized)) {
                     taskIndexList.push(modelIndex);
                 }
             }
@@ -85,7 +85,7 @@ function activateTask(index, model, modifiers, task, plasmoid, tasks, windowView
     }
 
     if (model.IsGroupParent) {
-        // Option 1 (default): Cycle through this group's tasks
+        // Option 0 (explicit alternative): Cycle through this group's tasks
         // ====================================================
         // If the grouped task does not include the currently active task, bring
         // forward the most recently used task in the group according to the
@@ -94,18 +94,25 @@ function activateTask(index, model, modifiers, task, plasmoid, tasks, windowView
         // to the stacking order, which otherwise would change with every click
         if (plasmoid.configuration.groupedTaskVisualization === 0) {
             let childTaskList = [];
-            let highestStacking = -1;
+            let highestStacking = -Infinity;
             let lastUsedTask = undefined;
 
             // Build list of child tasks and get stacking order data for them
-            for (let i = 0; i < tasks.tasksModel.rowCount(task.modelIndex(index)); ++i) {
+            for (let i = 0; i < tasks.tasksModel.rowCount(index); ++i) {
                 const childTaskModelIndex = tasks.tasksModel.makeModelIndex(task.index, i);
                 childTaskList.push(childTaskModelIndex);
+                if (lastUsedTask === undefined) {
+                    lastUsedTask = childTaskModelIndex;
+                }
                 const stacking = tasks.tasksModel.data(childTaskModelIndex, TaskManager.AbstractTasksModel.StackingOrder);
                 if (stacking > highestStacking) {
                     highestStacking = stacking;
                     lastUsedTask = childTaskModelIndex;
                 }
+            }
+
+            if (!childTaskList.length) {
+                return;
             }
 
             // If the active task is from a different app from the group that
@@ -132,23 +139,16 @@ function activateTask(index, model, modifiers, task, plasmoid, tasks, windowView
             }
         }
 
-        // Option 2: show tooltips for all child tasks
-        // ===========================================
-        else if (plasmoid.configuration.groupedTaskVisualization === 1) {
-            if (task.toolTipVisible) {
-                task.hideImmediately();
-            } else {
-                task.showToolTip();
-                task.updateToolTipBindings();
-            }
-        }
-
-        // Option 3: show Window View for all child tasks
-        // ==================================================
-        // Make sure the Window View effect is  are actually enabled though;
-        // if not, fall through to the next option.
+        // Option 2: retain the optional Window View effect when available.
         else if (plasmoid.configuration.groupedTaskVisualization === 2 && windowViewAvailable) {
+            task.hideImmediately();
             tasks.activateWindowView(model.WinIdList);
+        } else {
+            // Default: a per-window chooser. Disabled previews and unavailable
+            // effects still need an actionable textual list (option 3).
+            const forceList = !plasmoid.configuration.showPreviews
+                || plasmoid.configuration.groupedTaskVisualization !== 1;
+            task.showGroupChooser(forceList);
         }
     } else {
         if (model.IsMinimized) {

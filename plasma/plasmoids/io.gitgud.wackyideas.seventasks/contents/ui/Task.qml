@@ -18,6 +18,7 @@ import Qt5Compat.GraphicalEffects
 
 import "code/layoutmetrics.js" as LayoutMetrics
 import "code/tools.js" as TaskTools
+import "code/Win7TaskPolicy.js" as Win7TaskPolicy
 
 PlasmaCore.ToolTipArea {
     id: task
@@ -25,35 +26,74 @@ PlasmaCore.ToolTipArea {
     // BEGIN TOOLTIP CODE
     property real attentionAnimOpacity: attentionFrame.opacity > 0 ? 1 : attentionGlow.opacity
     property Item taskThumbnail: tasksRoot.taskThumbnail
+    property bool toolTipShown: false
+    readonly property bool previewVisible: toolTipShown
+    property bool groupChooserPinned: false
+    property bool forceGroupList: false
+    readonly property bool previewContent: showPreviews || forceGroupList
 
     active: !jumpListOpen
-    mainItem: showPreviews ? taskThumbnail : null
-    mainText: showPreviews ? "" : model.display
+    mainItem: previewContent ? taskThumbnail : null
+    mainText: previewContent ? "" : model.display
     location: Plasmoid.location
-    backgroundHints: showPreviews ? "StandardBackground" : "SolidBackground"
-    interactive: showPreviews
-    windowTitle: showPreviews ? "aeroshell-thumbnail" : ""
+    backgroundHints: previewContent ? PlasmaCore.Window.StandardBackground : PlasmaCore.Window.SolidBackground
+    interactive: previewContent
+    windowTitle: previewContent ? "aeroshell-thumbnail" : ""
 
-    onContainsMouseChanged: (containsMouse) => {
-        if(tasksRoot.toolTipOpen && !showPreviews) {
+    onContainsMouseChanged: {
+        if(taskThumbnail.parentTask !== task) {
+            return;
+        }
+        if(tasksRoot.toolTipOpen && !previewContent) {
             task.hideImmediately();
             tasksRoot.toolTipOpen = false;
         }
-        if(tasksRoot.pinnedToolTipOpen && showPreviews) {
+        if(tasksRoot.pinnedToolTipOpen && previewContent) {
             task.hideImmediately();
             tasksRoot.pinnedToolTipOpen = false;
         }
     }
-    onToolTipVisibleChanged: (toolTipVisible) => {
-        if(!toolTipVisible) {
-            tasksRoot.toolTipOpen = false;
-            tasksRoot.pinnedToolTipOpen = false;
+    onToolTipVisibleChanged: (shown) => {
+        toolTipShown = shown;
+        if(!shown) {
+            groupChooserPinned = false;
+            forceGroupList = false;
+            if(taskThumbnail.parentTask === task) {
+                taskThumbnail.isPeeking = false;
+                taskThumbnail.dragDrop = false;
+                tasksRoot.cancelHighlightWindows();
+                tasksRoot.toolTipOpen = false;
+                tasksRoot.pinnedToolTipOpen = false;
+            }
         }
     }
     onAboutToShow: {
         updateToolTipBindings();
-        if(showPreviews) tasksRoot.toolTipOpen = true;
-        if(!showPreviews) tasksRoot.pinnedToolTipOpen = true;
+        tasksRoot.toolTipOpen = previewContent;
+        tasksRoot.pinnedToolTipOpen = !previewContent;
+    }
+    Connections {
+        target: taskThumbnail
+        function onParentTaskChanged() {
+            if(taskThumbnail.parentTask !== task) {
+                groupChooserPinned = false;
+                forceGroupList = false;
+                if(previewVisible) {
+                    task.hideImmediately();
+                }
+            }
+        }
+    }
+
+    function showGroupChooser(forceList) {
+        if(groupChooserPinned && previewVisible) {
+            task.hideImmediately();
+            return;
+        }
+        forceGroupList = forceList;
+        groupChooserPinned = true;
+        updateToolTipBindings();
+        task.showToolTip();
     }
 
     function updateToolTipBindings() {
@@ -72,6 +112,7 @@ PlasmaCore.ToolTipArea {
         taskThumbnail.launcherUrl = Qt.binding(() => model.LauncherUrlWithoutIcon);
         taskThumbnail.isGroupParent = Qt.binding(() => model.IsGroupParent);
         taskThumbnail.taskHovered = Qt.binding(() => dragArea.containsMouse);
+        taskThumbnail.forceList = Qt.binding(() => task.forceGroupList);
     }
     // END TOOLTIP CODE
 
@@ -81,27 +122,23 @@ PlasmaCore.ToolTipArea {
     // This makes the tasks mirrored, so we mirror them again to fix that.
     rotation: Plasmoid.configuration.reverseMode && Plasmoid.formFactor === PlasmaCore.Types.Vertical ? 180 : 0
 
-    implicitHeight: LayoutMetrics.preferredTaskHeight();
+    readonly property bool hiddenStartup: model.IsStartup && !taskInLauncherList(appId)
+    visible: !hiddenStartup
+    implicitHeight: hiddenStartup ? 0 : LayoutMetrics.preferredTaskHeight()
     implicitWidth: {
+        if(hiddenStartup) {
+            return 0;
+        }
         if(tasksRoot.vertical) {
             return tasksRoot.width;
-        } else {
-            if(tasksRoot.iconsOnly || model.IsLauncher || model.IsStartup) {
-                return LayoutMetrics.preferredMinLauncherWidth();
-            } else {
-                var minWidth = LayoutMetrics.preferredMinWidth();
-                var maxWidth = LayoutMetrics.preferredMaxWidth();
-
-
-                var taskCount = taskList.contentItem.visibleChildren.length;
-                if(taskCount <= 1) taskCount = taskList.count
-                if(taskCount < 0) taskCount = 0;
-                var launcherCount = tasksModel.logicalLauncherCount;
-                if(launcherCount === 0) launcherCount = 1;
-                var currentWidth = Math.floor((taskList.width - (LayoutMetrics.preferredMinLauncherWidth()+16) * (launcherCount)) / (taskList.count - tasksModel.logicalLauncherCount));
-                return Math.min(maxWidth, Math.max(minWidth, currentWidth));
-            }
         }
+        if(tasksRoot.iconsOnly || model.IsLauncher || model.IsStartup) {
+            return LayoutMetrics.preferredMinLauncherWidth();
+        }
+        const counts = taskList.widthCounts;
+        return Win7TaskPolicy.labeledTaskWidth(taskList.width, counts.fixed, counts.labeled,
+            counts.slots, LayoutMetrics.preferredMinLauncherWidth(), taskList.spacing,
+            LayoutMetrics.preferredMinWidth(), LayoutMetrics.preferredMaxWidth());
     }
     Behavior on implicitWidth {
         NumberAnimation { duration: 200; easing.type: Easing.OutQuad }
@@ -113,7 +150,6 @@ PlasmaCore.ToolTipArea {
     SequentialAnimation {
         id: addLabelsAnimation
         NumberAnimation { target: task; properties: "opacity"; to: 1; duration: 200; easing.type: Easing.OutQuad }
-        PropertyAction { target: task; property: "visible"; value: true }
         PropertyAction { target: task; property: "state"; value: "" }
     }
     SequentialAnimation {
@@ -156,8 +192,10 @@ PlasmaCore.ToolTipArea {
         }
         if(jumpListOpen) {
             task.hideImmediately();
-            tasksRoot.toolTipOpen = false;
-            tasksRoot.pinnedToolTipOpen = false;
+            if(taskThumbnail.parentTask === task) {
+                tasksRoot.toolTipOpen = false;
+                tasksRoot.pinnedToolTipOpen = false;
+            }
         }
     }
     readonly property bool smartLauncherEnabled: !model.IsStartup
@@ -183,12 +221,12 @@ PlasmaCore.ToolTipArea {
     readonly property bool animateLabel: (!model.IsStartup && !model.IsLauncher) && !tasksRoot.iconsOnly
     readonly property bool shouldHideOnRemoval: model.IsStartup || model.IsLauncher
     ListView.onRemove: {
-            if (tasksRoot.containsMouse && index != tasksModel.count &&
+            if (dragArea.containsMouse && index != tasksModel.count &&
                 task.model.WinIdList.length > 0 &&
-                taskClosedWithMouseMiddleButton.indexOf(item.winIdList[0]) > -1) {
+                tasksRoot.taskClosedWithMouseMiddleButton.indexOf(task.model.WinIdList[0]) > -1) {
                 tasksRoot.needLayoutRefresh = true;
             }
-            taskClosedWithMouseMiddleButton = [];
+            tasksRoot.taskClosedWithMouseMiddleButton = [];
             if(shouldHideOnRemoval) {
                 taskList.add = null;
                 taskList.resetAddTransition.start();
@@ -201,16 +239,12 @@ PlasmaCore.ToolTipArea {
             }
     }
     ListView.onAdd: {
-        if(model.IsStartup && !taskInLauncherList(appId)) {
-            task.implicitWidth = 0;
-            task.visible = false;
-        }
         if(shouldHideOnRemoval) {
             taskList.add = null;
             taskList.resetAddTransition.start();
         }
         if(animateLabel) {
-            task.visible = false;
+            task.opacity = 0;
             task.state = "animateLabels";
             addLabelsAnimation.start();
         }
@@ -309,21 +343,32 @@ TaskManagerApplet.SmartLauncherItem { }
     }
 
     Keys.onMenuPressed: contextMenuTimer.start()
-    Keys.onReturnPressed: TaskTools.activateTask(modelIndex(), model, event.modifiers, task, Plasmoid, tasksRoot, effectWatcher.registered)
-    Keys.onEnterPressed: Keys.returnPressed(event);
-    Keys.onSpacePressed: Keys.returnPressed(event);
-    Keys.onUpPressed: Keys.leftPressed(event)
-    Keys.onDownPressed: Keys.rightPressed(event)
-    Keys.onLeftPressed: if ((event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
-                            tasksModel.move(task.index, task.index - 1);
-                        } else {
-                            event.accepted = false;
-                        }
-    Keys.onRightPressed: if ((event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
-                             tasksModel.move(task.index, task.index + 1);
-                         } else {
-                             event.accepted = false;
-                         }
+    Keys.onReturnPressed: event => leftTapHandler.leftClick(event.modifiers)
+    Keys.onEnterPressed: event => leftTapHandler.leftClick(event.modifiers)
+    Keys.onSpacePressed: event => leftTapHandler.leftClick(event.modifiers)
+    Keys.onEscapePressed: event => {
+        if(previewVisible) {
+            task.hideImmediately();
+        } else {
+            event.accepted = false;
+        }
+    }
+    Keys.onUpPressed: event => Keys.leftPressed(event)
+    Keys.onDownPressed: event => Keys.rightPressed(event)
+    Keys.onLeftPressed: event => {
+        if ((event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
+            tasksModel.move(task.index, task.index - 1);
+        } else {
+            event.accepted = false;
+        }
+    }
+    Keys.onRightPressed: event => {
+        if ((event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
+            tasksModel.move(task.index, task.index + 1);
+        } else {
+            event.accepted = false;
+        }
+    }
 
     function modelIndex() {
         return tasksModel.makeModelIndex(index);
@@ -333,7 +378,7 @@ TaskManagerApplet.SmartLauncherItem { }
         moreMenu.openRelative();
     }
     function showContextMenu(args) {
-        if(task.toolTipVisible) task.hideImmediately();
+        if(task.previewVisible) task.hideImmediately();
         if(Plasmoid.configuration.disableJumplists) {
             contextMenuTimer.showNormalMenu = true;
             contextMenuTimer.start();
@@ -624,22 +669,6 @@ TaskManagerApplet.SmartLauncherItem { }
         property bool showNormalMenu: false
         interval: 0
         onTriggered: menuTapHandler.longPressed()
-    }
-
-    TapHandler {
-        id: leftTapHandler
-        acceptedButtons: Qt.LeftButton
-        onTapped: leftClick()
-
-        function leftClick() {
-
-            if(tasksRoot.pinnedToolTipOpen) {
-                task.hideImmediately();
-                tasksRoot.pinnedToolTipOpen = false;
-            }
-
-            TaskTools.activateTask(modelIndex(), model, point.modifiers, task, Plasmoid, tasksRoot, effectWatcher.registered);
-        }
     }
 
     TapHandler {
@@ -1400,7 +1429,7 @@ TaskManagerApplet.SmartLauncherItem { }
 
                 Badge {
                     id: badge
-                    visible: task.smartLauncherItem && task.smartLauncherItem.countVisible
+                    visible: Plasmoid.configuration.showNotificationBadges && task.smartLauncherItem && task.smartLauncherItem.countVisible
                     number: task.smartLauncherItem.count
                     anchors.top: parent.top
                     anchors.right: parent.right
@@ -1464,6 +1493,26 @@ TaskManagerApplet.SmartLauncherItem { }
 
     MouseArea {
         id: dragArea
+        TapHandler {
+            id: leftTapHandler
+            acceptedButtons: Qt.LeftButton
+            onTapped: {
+                if(!dragArea.held) {
+                    leftClick(point.modifiers);
+                }
+            }
+
+            function leftClick(modifiers = Qt.NoModifier) {
+
+                if(tasksRoot.pinnedToolTipOpen && taskThumbnail.parentTask === task) {
+                    task.hideImmediately();
+                    tasksRoot.pinnedToolTipOpen = false;
+                }
+
+                TaskTools.activateTask(modelIndex(), model, modifiers, task, Plasmoid, tasksRoot, effectWatcher.registered);
+            }
+        }
+
         property alias taskIndex: task.index
         hoverEnabled: true
         enabled: ((tasksRoot.jumpListItem === jumpList) || (tasksRoot.jumpListItem === null))
@@ -1474,15 +1523,13 @@ TaskManagerApplet.SmartLauncherItem { }
         onCanceled: {
             if(held) {
                 sendItemBack();
+            } else {
+                dragThreshold = Qt.point(-1,-1);
             }
         }
         onContainsMouseChanged: {
-            if(containsMouse) {
-                if(task.toolTipVisible && !model.IsLauncher) {
-                    if(taskThumbnail.pinned && !model.IsLauncher) return;
-                    if(!taskThumbnail.pinned && model.IsLauncher) return;
-                    task.updateToolTipBindings();
-                }
+            if(containsMouse && task.previewVisible && !model.IsLauncher) {
+                task.updateToolTipBindings();
             }
         }
         property bool held: false
@@ -1548,14 +1595,12 @@ TaskManagerApplet.SmartLauncherItem { }
             resetDrag.start();
             dragThreshold = Qt.point(-1,-1);
         }
-        onReleased: event => {
+        onReleased: {
             if(held) {
                 sendItemBack();
             } else {
-                leftTapHandler.leftClick();
                 dragThreshold = Qt.point(-1,-1);
             }
-            event.accepted = false;
         }
     }
     DropArea {
@@ -1583,7 +1628,7 @@ TaskManagerApplet.SmartLauncherItem { }
 
         onPositionChanged: {
             if(model.ChildCount == 0) {
-                if(task.toolTipVisible) {
+                if(task.previewVisible) {
                     taskThumbnail.dragDrop = false;
                 }
             }
@@ -1591,7 +1636,7 @@ TaskManagerApplet.SmartLauncherItem { }
         }
 
         onExited: {
-            if(task.toolTipVisible) {
+            if(task.previewVisible) {
                 taskThumbnail.dragDrop = false;
             }
             activationTimer.stop();
@@ -1631,7 +1676,7 @@ TaskManagerApplet.SmartLauncherItem { }
             if(model.ChildCount == 0) {
                 tasksModel.requestOpenUrls(task.modelIndex(), urls);
             } else if(model.ChildCount > 0) {
-                if(task.toolTipVisible) {
+                if(task.previewVisible) {
                     taskThumbnail.dragDrop = false;
                 }
             }
@@ -1645,14 +1690,14 @@ TaskManagerApplet.SmartLauncherItem { }
 
             onTriggered: {
                 if(task.model.ChildCount > 0) {
-                    if(!task.toolTipVisible) {
+                    if(!task.previewVisible) {
                         task.showToolTip();
                         taskThumbnail.dragDrop = true;
                         updateToolTipBindings();
                     }
                 }
                 else {
-                    if(task.toolTipVisible) {
+                    if(task.previewVisible) {
                         taskThumbnail.dragDrop = false;
                     }
                     tasksModel.requestActivate(modelIndex());
@@ -1675,6 +1720,14 @@ TaskManagerApplet.SmartLauncherItem { }
     }
 
     Component.onDestruction: {
+        if(taskThumbnail && taskThumbnail.parentTask === task) {
+            task.hideImmediately();
+            taskThumbnail.isPeeking = false;
+            tasksRoot.cancelHighlightWindows();
+            tasksRoot.toolTipOpen = false;
+            tasksRoot.pinnedToolTipOpen = false;
+            taskThumbnail.parentTask = null;
+        }
         while (audioStreamUsers > 0) {
             releaseAudioStreams();
         }

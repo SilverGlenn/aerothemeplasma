@@ -63,7 +63,11 @@
       <default>false</default>
     </entry>
     <entry name="showMuteBtn" type="Bool">
-      <label>Whether launcher tasks are sorted separately at the left side of the widget or can be mixed with other tasks.</label>
+      <label>Whether to show the optional audio mute button in window previews.</label>
+      <default>false</default>
+    </entry>
+    <entry name="showNotificationBadges" type="Bool">
+      <label>Whether to show KDE numeric notification badges on task icons.</label>
       <default>false</default>
     </entry>
     <entry name="hideLauncherOnStart" type="Bool">

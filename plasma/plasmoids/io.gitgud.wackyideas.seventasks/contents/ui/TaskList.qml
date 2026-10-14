@@ -27,6 +27,23 @@ ListView {
     interactive: false
     cacheBuffer: 9999
     spacing: 2
+    readonly property var widthCounts: {
+        let fixed = 0;
+        let labeled = 0;
+        // Observe delegate creation and role changes, not decorative/scroll children.
+        for (let item of contentItem.children) {
+            if (!item.model || item.index < 0 || item.index >= count
+                    || itemAtIndex(item.index) !== item || item.hiddenStartup) {
+                continue;
+            }
+            if (item.model.IsLauncher || item.model.IsStartup) {
+                ++fixed;
+            } else {
+                ++labeled;
+            }
+        }
+        return {fixed: fixed, labeled: labeled, slots: count};
+    }
     readonly property int transitionDuration: 200
     property alias taskAnimation: taskAnimation
     property alias resetTransition: resetTransition
