@@ -11,6 +11,16 @@ ID = "local.win7.seventasks.preview"
 LIBRARY = "lib" + ID + ".so"
 
 
+def reject_overlapping_paths(parser, pairs):
+    # Validate the whole operation before moving any existing preview to backup.
+    # Same-prefix, symlink-alias and nested copies can otherwise consume their
+    # own source or recursively copy a package into itself.
+    for source, destination in pairs:
+        source, destination = source.resolve(), destination.resolve()
+        if source == destination or source in destination.parents or destination in source.parents:
+            parser.error("source and destination preview paths must not overlap")
+
+
 def replace_with_backup(source, destination):
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
@@ -43,6 +53,7 @@ def main():
         if not source_plugin.is_file():
             parser.error("native preview plugin has not been built")
         source = ROOT / "plasma/plasmoids/io.gitgud.wackyideas.seventasks"
+        reject_overlapping_paths(parser, ((source, package), (source_plugin, plugin)))
         replace_with_backup(source, package)
         metadata = json.loads((package / "metadata.json").read_text())
         for key in list(metadata["KPlugin"]):
@@ -56,13 +67,14 @@ def main():
     elif args.action == "install":
         if not args.confirm or not args.from_stage:
             parser.error("install requires --confirm and --from-stage (never run by staging/tests)")
-        source = args.from_stage.resolve()
+        source = args.from_stage.expanduser().resolve()
         source_package = source / "share/plasma/plasmoids" / ID
         source_plugin = source / "plugins/plasma/applets" / LIBRARY
         if not source_plugin.is_file() or not (source_package / "metadata.json").is_file():
             parser.error("incomplete source stage")
         if json.loads((source_package / "metadata.json").read_text())["KPlugin"]["Id"] != ID:
             parser.error("source stage is not the independent preview identity")
+        reject_overlapping_paths(parser, ((source_package, package), (source_plugin, plugin)))
         replace_with_backup(source / "share/plasma/plasmoids" / ID, package)
         replace_with_backup(source / "plugins/plasma/applets" / LIBRARY, plugin)
     else:

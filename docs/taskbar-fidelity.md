@@ -29,8 +29,10 @@ python3 tests/taskbar/test-preview-staging.py /tmp/win7-taskbar-native
 
 Final matrix: **17 delegate + 20 preview QtTest passes per scale**, zero failed,
 zero skipped; **111 passes total** (includes suite init/cleanup), plus **38**
-production helper/main/template assertions. Staging CLI: **7** assertions using
-only temporary prefixes. Native build succeeds; explicit KPluginFactory load
+production helper/main/template assertions. Staging CLI: **15** assertions using
+only temporary prefixes, including same-prefix, symlink-alias, nested-copy and
+native-build/stage overlap rejection before any existing files are moved.
+Native build succeeds; explicit KPluginFactory load
 creates a **SevenTasks Plasma::Applet** and verifies five required native methods.
 This is not just a renamed QML package, but also not full shell/runtime proof.
 
@@ -111,7 +113,8 @@ scripts/stage-taskbar-preview.py uninstall "$HOME/.local/win7-taskbar-preview" -
 
 This nonstandard prefix is intentionally not an automatic live-desktop install.
 Install/uninstall require confirmation, touch only the preview ID/library, and
-never change panel configuration. Existing preview files are timestamp-backed-up;
+never change panel configuration. Stage/install reject overlapping source and
+destination paths before creating backups or copying either package or library. Existing preview files are timestamp-backed-up;
 uninstall keeps backups. To restore a prior preview, manually move its matching
 `.backup-*` package/library back to the named paths after removing the current
 preview; unrelated taskbar installation remains untouched. Before any manual live
@@ -120,8 +123,10 @@ remove that preview widget manually before uninstalling. No script does this.
 
 ## Remaining acceptance gates
 
-Independent correctness/fidelity review is required. Full shell native backend
-contracts, real task operations/QModelIndex wheel behavior, external popup dismissal,
+Independent correctness/fidelity reviews accepted the qualified UI/component
+first pass with notes; that is not approval for live installation or parity claims.
+Full shell native backend contracts, real task operations/QModelIndex wheel
+behavior, external popup dismissal,
 keyboard focus entry through the native popup, compositor/theme margins, touch,
 Wayland capture/KWin Peek and real MPRIS remain unchecked. Accessibility is not
 certified. No valid Aero visual reference exists; Basic reference cannot settle
