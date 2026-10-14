@@ -35,17 +35,12 @@ if (freeEdges["bottom"] == true) {
     panel.location = "top";
 }
 
-// Restrict horizontal panel to a maximum size of a 21:9 monitor
-const maximumAspectRatio = 21/9;
+// Windows 7 reference: a non-floating, full-edge 40 logical-pixel bar.
 if (panel.formFactor === "horizontal") {
     const geo = screenGeometry(panelScreen);
-    const maximumWidth = Math.ceil(geo.height * maximumAspectRatio);
-
-    if (geo.width > maximumWidth) {
-        panel.alignment = "center";
-        panel.minimumLength = maximumWidth;
-        panel.maximumLength = maximumWidth;
-    }
+    panel.alignment = "left";
+    panel.minimumLength = geo.width;
+    panel.maximumLength = geo.width;
 }
 
 panel.addWidget("io.gitgud.wackyideas.SevenStart")

@@ -251,7 +251,7 @@ PlasmoidItem {
         }
         for(var i = 0; i < tasksModel.count; ++i) {
             var task = taskList.itemAtIndex(i);
-            if (!task.model.IsLauncher && !task.model.IsStartup) {
+            if (task && task.model && !task.model.IsLauncher && !task.model.IsStartup) {
                 tasks.tasksModel.requestPublishDelegateGeometry(tasks.tasksModel.makeModelIndex(task.index),
                     backend.globalRect(task), task);
             }
@@ -272,8 +272,8 @@ PlasmoidItem {
         id: layoutDelay
         interval: 1000
         onTriggered: {
-            taskList.width += 1;
-            taskList.width -= 1;
+            taskList.forceLayout();
+            tasks.publishIconGeometries();
         }
     }
 
@@ -531,22 +531,17 @@ PlasmoidItem {
                 return ListView.Horizontal
             }
 
-            // Is this really needed?
-            // It apparently is, this somehow resets MouseArea and makes stuff actually work
             function forceMouseEvent() {
-                for(var child in taskList.contentItem.children) {
-                    var t = taskList.contentItem.children[child];
-                    if(typeof t !== "undefined") {
-                        if(t.isLauncher) {
-                            t.visible = false;
-                            t.visible = true;
-                        }
+                for (var i = 0; i < count; ++i) {
+                    var task = itemAtIndex(i);
+                    if (task && task.mouseArea) {
+                        Plasmoid.sendMouseEvent(task.mouseArea);
                     }
                 }
-                onAnimatingChanged: {
-                    if (!animating) {
-                        tasks.publishIconGeometries(visibleChildren, tasks);
-                    }
+            }
+            onAnimatingChanged: {
+                if (!animating) {
+                    tasks.publishIconGeometries();
                 }
             }
 

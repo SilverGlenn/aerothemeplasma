@@ -14,6 +14,21 @@ MouseArea {
     Layout.preferredWidth: 26;
     Layout.preferredHeight: 24;
     hoverEnabled: true
+    activeFocusOnTab: true
+    property string accessibleName: ""
+    Accessible.role: Accessible.Button
+    Accessible.name: accessibleName
+    Accessible.onPressAction: activate()
+    Keys.onReturnPressed: activate()
+    Keys.onEnterPressed: activate()
+    Keys.onSpacePressed: activate()
+    function activate() {
+        if (enabled) clicked(null);
+    }
+    PlasmaCore.ToolTipArea {
+        anchors.fill: parent
+        mainText: mediaButton.accessibleName
+    }
 
     property int iconWidth
     property int iconHeight
@@ -32,7 +47,7 @@ MouseArea {
         imagePath: Qt.resolvedUrl("svgs/toolbuttons.svg")
         anchors.fill: parent
         prefix: mediaButton.orientation + (!mediaButton.enableButton ? "-disabled" : "")
-        opacity: mediaButton.enableButton ? !parent.containsMouse : 1
+        opacity: mediaButton.enableButton ? !(parent.containsMouse || mediaButton.activeFocus) : 1
         Behavior on opacity {
             NumberAnimation { duration: mediaButton.enableButton ? 250 : 1 }
         }
@@ -43,7 +58,7 @@ MouseArea {
         anchors.fill: parent
         visible: mediaButton.enableButton
         prefix: mediaButton.orientation + (parent.containsPress ? "-pressed" : "-hover");
-        opacity: mediaButton.enableButton ? parent.containsMouse : 0
+        opacity: mediaButton.enableButton ? (parent.containsMouse || mediaButton.activeFocus) : 0
         Behavior on opacity {
             NumberAnimation { duration: mediaButton.enableButton ? 250 : 1}
         }

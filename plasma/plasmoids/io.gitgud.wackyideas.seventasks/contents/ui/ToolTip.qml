@@ -12,6 +12,7 @@ Item {
     property QtObject parentTask
     onParentTaskChanged: {
         cancelPeek();
+        keyboardFocusRequested = false;
         loaderItem.active = parentTask !== null;
     }
     property string display: "undefined"
@@ -27,6 +28,21 @@ Item {
     property bool forceList: false
     readonly property bool popupVisible: parentTask ? parentTask.previewVisible : false
     property bool dragDrop: false
+    property bool keyboardFocusRequested: false
+
+    function focusFirstRow() {
+        keyboardFocusRequested = true;
+        tryFocusFirstRow();
+    }
+    function tryFocusFirstRow() {
+        if (!keyboardFocusRequested || !popupVisible || !loaderItem.item) return;
+        if (isGroupParent) {
+            if (!loaderItem.item.focusFirstRow()) return;
+        } else {
+            loaderItem.item.forceActiveFocus(Qt.TabFocusReason);
+        }
+        keyboardFocusRequested = false;
+    }
 
     property bool isPeeking: false
     property Item peekOwner: null
@@ -67,6 +83,7 @@ Item {
     onPopupVisibleChanged: if (!popupVisible) {
         cancelPeek();
         containsDrag = false;
+        keyboardFocusRequested = false;
     }
 
     Keys.onEscapePressed: event => {
@@ -92,6 +109,7 @@ Item {
         height: tooltip.height
         active: false
         asynchronous: true
+        onLoaded: tooltip.tryFocusFirstRow()
         sourceComponent: isGroupParent ? groupThumbnails : windowThumbnail
 
         Binding {

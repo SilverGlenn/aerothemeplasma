@@ -11,6 +11,14 @@ Item {
 
     property QtObject root
 
+    function focusFirstRow() {
+        thumbnailList.currentIndex = 0;
+        thumbnailList.positionViewAtBeginning();
+        if (!thumbnailList.currentItem) return false;
+        thumbnailList.currentItem.forceActiveFocus(Qt.TabFocusReason);
+        return true;
+    }
+
     readonly property real padding: Kirigami.Units.smallSpacing * 2
     readonly property real gutter: Kirigami.Units.smallSpacing / 2
     readonly property real previewWidth: PreviewMetrics.boundedSize(PreviewMetrics.previewWidth + padding * 2, root.availableWidth)
@@ -66,6 +74,7 @@ Item {
                         maxHeight = Math.max(maxHeight, item.implicitHeight);
                     }
                 }
+                groupThumbnails.root.tryFocusFirstRow();
                 maxThumbnailWidth = Math.min(maxWidth, groupThumbnails.root.availableWidth);
                 maxThumbnailHeight = Math.min(maxHeight || (PreviewMetrics.previewHeight + groupThumbnails.padding * 2 + 20 + groupThumbnails.gutter), groupThumbnails.root.availableHeight);
             }

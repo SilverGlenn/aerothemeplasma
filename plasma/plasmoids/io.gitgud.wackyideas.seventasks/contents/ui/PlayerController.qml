@@ -29,6 +29,7 @@ RowLayout {
 
     MediaButton {
         id: previousBtn
+        accessibleName: i18n("Previous")
         orientation: "left"
         mediaIcon: "previous"
         onClicked: root.playerData.Previous();
@@ -38,6 +39,7 @@ RowLayout {
     }
     MediaButton {
         id: playbackBtn
+        accessibleName: isPlaying ? i18n("Pause") : i18n("Play")
         orientation: "center"
         mediaIcon: isPlaying ? "pause" : "play"
         onClicked: {
@@ -50,6 +52,7 @@ RowLayout {
     }
     MediaButton {
         id: skipBtn
+        accessibleName: i18n("Next")
         orientation: muteBtn.visible ? "center" : "right"
         mediaIcon: "skip"
         onClicked: root.playerData.Next();
@@ -59,6 +62,7 @@ RowLayout {
     }
     MediaButton {
         id: muteBtn
+        accessibleName: muted ? i18n("Unmute") : i18n("Mute")
         orientation: "right"
         mediaIcon: muted ? "unmute" : "mute"
         onClicked: root.parentTask.toggleMuted();

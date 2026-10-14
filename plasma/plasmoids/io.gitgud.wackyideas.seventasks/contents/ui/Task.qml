@@ -343,9 +343,15 @@ TaskManagerApplet.SmartLauncherItem { }
     }
 
     Keys.onMenuPressed: contextMenuTimer.start()
-    Keys.onReturnPressed: event => leftTapHandler.leftClick(event.modifiers)
-    Keys.onEnterPressed: event => leftTapHandler.leftClick(event.modifiers)
-    Keys.onSpacePressed: event => leftTapHandler.leftClick(event.modifiers)
+    function activateFromKeyboard(modifiers) {
+        leftTapHandler.leftClick(modifiers);
+        if (previewVisible && taskThumbnail.parentTask === task) {
+            taskThumbnail.focusFirstRow();
+        }
+    }
+    Keys.onReturnPressed: event => activateFromKeyboard(event.modifiers)
+    Keys.onEnterPressed: event => activateFromKeyboard(event.modifiers)
+    Keys.onSpacePressed: event => activateFromKeyboard(event.modifiers)
     Keys.onEscapePressed: event => {
         if(previewVisible) {
             task.hideImmediately();

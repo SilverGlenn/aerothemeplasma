@@ -1,5 +1,20 @@
 # AeroThemePlasma
 
+## Independent Windows 7 taskbar fidelity fork (private preview)
+
+This checkout's `windows7-fidelity` branch is an independent experimental fork,
+not an upstream contribution. It prioritizes directly observed Windows 7 taskbar
+spacing/activation, then Microsoft's Windows 7-era UX Guide for retained KDE
+functions. The Basic-graphics reference cannot establish Aero Glass or live
+thumbnail parity. Upstream credits, license and original documentation below are
+preserved; do not submit AI-assisted changes upstream.
+
+See [reference evidence](docs/windows7-taskbar-reference.md),
+[UX checks](docs/taskbar-uxguide-checklist.md), and
+[isolated tests / opt-in parallel preview staging](docs/taskbar-fidelity.md).
+Preview commands do not install onto or restart the live desktop. Use the dedicated
+staging utility, **not** the upstream root `install.sh`, to prepare this preview.
+
 ## HIATUS NOTICE: This is a long overdue announcement, but development will slow down significantly as a result of real life priorities I have to take care of first. Estimated time until I continue development is unknown, but don't expect anything significant in the following few months, until August, probably. Thank you for your patience and support.
 
 ## Microsoft® Windows™ is a registered trademark of Microsoft® Corporation. This name is used for referential use only, and does not aim to usurp copyrights from Microsoft. Microsoft Ⓒ 2025 All rights reserved. All resources belong to Microsoft Corporation.
