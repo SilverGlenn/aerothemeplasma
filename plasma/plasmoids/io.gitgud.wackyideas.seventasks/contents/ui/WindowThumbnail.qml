@@ -3,6 +3,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 
+import "code/Win7PreviewMetrics.js" as PreviewMetrics
+
 import Qt5Compat.GraphicalEffects
 
 import org.kde.kirigami as Kirigami
@@ -13,7 +15,6 @@ import org.kde.kwindowsystem
 
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasmoid
-import org.kde.plasma.private.mpris as Mpris
 
 MouseArea {
     id: thumbnailRoot
@@ -35,39 +36,53 @@ MouseArea {
     readonly property var minimized: isGroupDelegate ? model.IsMinimized : root.minimized
     readonly property var demandsAttention: isGroupDelegate ? model.IsDemandingAttention : root.demandsAttention
 
-    property int maxPreviewWidth: 164
-    property int maxPreviewHeight: 94
-    property real baselineAspectRatio: maxPreviewWidth / maxPreviewHeight
-
+    readonly property real padding: Kirigami.Units.smallSpacing * 2
+    readonly property real margins: padding * 2
+    readonly property real headerHeight: Math.max(20, txt.implicitHeight)
+    readonly property real toolbarHeight: mprisControls.active ? mprisControls.implicitHeight : 0
+    readonly property real maxPreviewWidth: Math.max(1, Math.min(PreviewMetrics.previewWidth, root.availableWidth - margins))
+    readonly property real maxPreviewHeight: Math.max(1, Math.min(PreviewMetrics.previewHeight, root.availableHeight - margins - headerHeight - content.spacing - toolbarHeight))
     property real thumbnailHeight: maxPreviewHeight
 
-    readonly property int margins: Kirigami.Units.smallSpacing*8
+    implicitWidth: PreviewMetrics.boundedSize(PreviewMetrics.previewWidth + margins, root.availableWidth)
+    implicitHeight: Math.min(root.availableHeight, Math.max(1, Math.min(thumbnailHeight, maxPreviewHeight)) + margins + headerHeight + content.spacing + toolbarHeight)
 
-    implicitWidth: maxPreviewWidth + margins
-    implicitHeight: thumbnailHeight + margins +
-        (tasks.iconsOnly ? header.height : 0) +
-        (mprisControls.active ? (mprisControls.height - (Kirigami.Units.smallSpacing*2)) : 0)
-
-    onImplicitHeightChanged: if(isGroupDelegate) {
-        ListView.view.updateMaxSize()
+    onImplicitHeightChanged: if (isGroupDelegate && ListView.view) ListView.view.updateMaxSize()
+    onWindowsChanged: {
+        windowPeek.stop();
+        root.endPeek(thumbnailRoot);
+        thumbnailHeight = maxPreviewHeight;
     }
+    onMinimizedChanged: if (minimized) root.endPeek(thumbnailRoot)
 
     width: implicitWidth
-    height: {
-        if(isGroupDelegate && ListView.view.maxThumbnailItem !== thumbnailRoot)
-            return ListView.view.maxThumbnailHeight;
-        else
-            return implicitHeight;
-    }
+    height: isGroupDelegate && ListView.view ? ListView.view.maxThumbnailHeight : implicitHeight
 
     hoverEnabled: true
-    propagateComposedEvents: true
+    acceptedButtons: Qt.NoButton
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: display
+    Accessible.onPressAction: activateTask()
+
+    function activateTask() {
+        windowPeek.stop();
+        root.cancelPeek();
+        tasksModel.requestActivate(modelIndex);
+        root.dismiss();
+    }
+
+    Keys.onReturnPressed: activateTask()
+    Keys.onEnterPressed: activateTask()
+    Keys.onSpacePressed: activateTask()
+    Keys.onDeletePressed: closeTask()
+    Keys.onEscapePressed: root.dismiss()
+    onActiveFocusChanged: if (activeFocus && isGroupDelegate && ListView.view) ListView.view.positionViewAtIndex(index, ListView.Contain)
 
     Item {
         id: frames
 
-        anchors.fill: content
-        anchors.margins: -Kirigami.Units.smallSpacing*2
+        anchors.fill: parent
 
         KSvg.FrameSvgItem {
             id: attentionTexture
@@ -78,7 +93,7 @@ MouseArea {
             prefix: "attention"
 
             visible: demandsAttention
-            opacity: root.parentTask.attentionAnimOpacity
+            opacity: root.parentTask ? root.parentTask.attentionAnimOpacity : 0
         }
 
         KSvg.FrameSvgItem {
@@ -103,7 +118,7 @@ MouseArea {
                 else return "hover";
             }
 
-            opacity: thumbnailCloseMa.containsMouse || contentMa.containsMouse || closeMa.containsMouse || (!tasks.iconsOnly && root.taskHovered && !isGroupDelegate)
+            opacity: contentMa.containsMouse || closeMa.containsMouse || thumbnailRoot.activeFocus || closeMa.activeFocus
 
             Behavior on opacity {
                 NumberAnimation { duration: 250 }
@@ -112,8 +127,10 @@ MouseArea {
     }
 
     function closeTask() {
+        windowPeek.stop();
+        root.cancelPeek();
         tasksModel.requestClose(modelIndex);
-        if(!isGroupDelegate) root.parentTask.hideImmediately();
+        if (!isGroupDelegate) root.dismiss();
     }
     DropArea {
         signal urlsDropped(var urls)
@@ -121,12 +138,17 @@ MouseArea {
         anchors.fill: parent
 
         onPositionChanged: activationTimer.restart();
-        onEntered: root.containsDrag = true;
+        onEntered: {
+            root.containsDrag = true;
+            activationTimer.restart();
+        }
         onExited: {
             activationTimer.stop();
             root.containsDrag = false;
         }
         onDropped: event => {
+            activationTimer.stop();
+            root.containsDrag = false;
             if (event.hasUrls) {
                 urlsDropped(event.urls);
                 return;
@@ -140,10 +162,10 @@ MouseArea {
         Timer {
             id: activationTimer
 
-            interval: 250
+            interval: PreviewMetrics.dragActivationDelay
             repeat: false
 
-            onTriggered: tasksModel.requestActivate(modelIndex);
+            onTriggered: if (root.containsDrag && root.popupVisible) tasksModel.requestActivate(modelIndex);
         }
 
         visible: isGroupDelegate
@@ -152,25 +174,21 @@ MouseArea {
     MouseArea {
         id: contentMa
 
-        anchors.fill: content
-        anchors.margins: -Kirigami.Units.smallSpacing*2
+        anchors.fill: parent
 
         hoverEnabled: true
-        propagateComposedEvents: true
+        propagateComposedEvents: false
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
         onContainsMouseChanged: {
-            if(containsMouse) windowPeek.start();
+            if (containsMouse) windowPeek.restart();
             else {
                 windowPeek.stop();
-                root.isPeeking = false;
-                tasks.windowsHovered(thumbnailRoot.windows, false)
+                root.endPeek(thumbnailRoot);
             }
         }
         onClicked: (mouse) => {
             if(mouse.button == Qt.LeftButton) {
-                tasksModel.requestActivate(modelIndex);
-                tasks.windowsHovered(thumbnailRoot.windows, false)
-                root.parentTask.hideImmediately();
+                activateTask();
             }
             if(mouse.button == Qt.MiddleButton) {
                 thumbnailRoot.closeTask();
@@ -181,24 +199,19 @@ MouseArea {
     Timer {
         id: windowPeek
 
-        interval: root.isPeeking ? 1 : 800
+        interval: root.isPeeking ? 1 : PreviewMetrics.peekDelay
         repeat: false
         onTriggered: {
-            if(!minimized) {
-                tasks.windowsHovered(thumbnailRoot.windows, true);
-                root.isPeeking = true;
-            }
+            if (!minimized && contentMa.containsMouse && root.popupVisible) root.beginPeek(thumbnailRoot, windows);
         }
     }
 
     ColumnLayout {
         id: content
 
-        anchors.centerIn: parent
-        anchors.verticalCenterOffset: mprisControls.active ? -(mprisControls.height / 4) - 2 : 0
-
-        width: parent.width - margins
-        height: parent.height - margins - (mprisControls.active ? (mprisControls.height - (Kirigami.Units.smallSpacing*2)) : 0)
+        anchors.fill: parent
+        anchors.margins: thumbnailRoot.padding
+        anchors.bottomMargin: thumbnailRoot.padding + thumbnailRoot.toolbarHeight
 
         spacing: Kirigami.Units.smallSpacing/2
 
@@ -206,12 +219,10 @@ MouseArea {
             id: header
 
             Layout.fillWidth: true
-            Layout.minimumHeight: 16
-            Layout.maximumHeight: 16
+            Layout.minimumHeight: thumbnailRoot.headerHeight
+            Layout.maximumHeight: thumbnailRoot.headerHeight
 
             spacing: Kirigami.Units.smallSpacing
-
-            visible: tasks.iconsOnly
 
             Kirigami.Icon {
                 Layout.preferredHeight: 16
@@ -233,37 +244,43 @@ MouseArea {
                 style: Text.Outline
                 styleColor: "#02ffffff"
                 horizontalAlignment: captionAlignment
-                rightPadding: captionAlignment == Text.AlignHCenter ? (close.visible ? 0 : close.width + header.spacing) : 0
+                rightPadding: 0
             }
 
-            KSvg.FrameSvgItem {
-                id: close
-
-                Layout.preferredWidth: 14
-                Layout.preferredHeight: 14
-
-                imagePath: Qt.resolvedUrl("svgs/button-close.svg")
-                prefix: closeMa.containsMouse ? (closeMa.containsPress ? "pressed" : "hover") : "normal"
-
-                visible: opacity
-
-                opacity: contentMa.containsMouse || closeMa.containsMouse
-
-                Behavior on opacity {
-                    NumberAnimation { duration: 250 }
+            MouseArea {
+                id: closeMa
+                Layout.preferredWidth: 20
+                Layout.preferredHeight: 20
+                hoverEnabled: true
+                acceptedButtons: Qt.LeftButton
+                propagateComposedEvents: false
+                activeFocusOnTab: true
+                Accessible.role: Accessible.Button
+                Accessible.name: i18n("Close %1", thumbnailRoot.display)
+                Accessible.onPressAction: thumbnailRoot.closeTask()
+                onClicked: thumbnailRoot.closeTask()
+                Keys.onReturnPressed: thumbnailRoot.closeTask()
+                Keys.onEnterPressed: thumbnailRoot.closeTask()
+                Keys.onSpacePressed: thumbnailRoot.closeTask()
+                Keys.onEscapePressed: root.dismiss()
+                onActiveFocusChanged: if (activeFocus) {
+                    windowPeek.stop();
+                    root.endPeek(thumbnailRoot);
+                    if (ListView.view) ListView.view.positionViewAtIndex(index, ListView.Contain);
+                }
+                onContainsMouseChanged: if (containsMouse) {
+                    windowPeek.stop();
+                    root.endPeek(thumbnailRoot);
                 }
 
-                MouseArea {
-                    id: closeMa
-
-                    anchors.fill: parent
-
-                    hoverEnabled: true
-                    propagateComposedEvents: true
-
-                    onClicked: {
-                        thumbnailRoot.closeTask();
-                    }
+                KSvg.FrameSvgItem {
+                    anchors.centerIn: parent
+                    width: 14
+                    height: 14
+                    imagePath: Qt.resolvedUrl("svgs/button-close.svg")
+                    prefix: closeMa.containsMouse || closeMa.activeFocus ? (closeMa.containsPress ? "pressed" : "hover") : "normal"
+                    opacity: contentMa.containsMouse || closeMa.containsMouse || thumbnailRoot.activeFocus || closeMa.activeFocus ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 250 } }
                 }
             }
         }
@@ -271,21 +288,21 @@ MouseArea {
         Item {
             id: thumbnail
 
-            Layout.minimumWidth: thumbnailRoot.width - margins
-            Layout.minimumHeight: thumbnailHeight
+            Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.minimumHeight: Math.min(thumbnailRoot.thumbnailHeight, thumbnailRoot.maxPreviewHeight)
 
             Loader {
                 id: thumbnailLoader
 
                 anchors.centerIn: parent
 
-                width: parent.Layout.minimumWidth
-                height: 94
+                width: thumbnailRoot.maxPreviewWidth
+                height: thumbnailRoot.maxPreviewHeight
 
                 active: true
                 asynchronous: true
-                sourceComponent: minimized ? appIcon : (KWindowSystem.isPlatformWayland ? (tasks.toolTipOpen ? waylandThumbnail : undefined) : x11Thumbnail)
+                sourceComponent: minimized ? appIcon : (KWindowSystem.isPlatformWayland ? (root.popupVisible ? waylandThumbnail : undefined) : x11Thumbnail)
 
                 onLoaded: {
                     if(sourceComponent !== x11Thumbnail) thumbnailRoot.thumbnailHeight = thumbnailLoader.height;
@@ -298,7 +315,7 @@ MouseArea {
                     PlasmaCore.WindowThumbnail {
                         winId: windows !== undefined ? windows[0] : undefined
 
-                        onPaintedSizeChanged: thumbnailRoot.thumbnailHeight = paintedHeight;
+                        onPaintedSizeChanged: thumbnailRoot.thumbnailHeight = paintedHeight > 0 ? Math.min(paintedHeight, thumbnailRoot.maxPreviewHeight) : thumbnailRoot.maxPreviewHeight;
 
                         Rectangle {
                             anchors.centerIn: parent
@@ -326,35 +343,25 @@ MouseArea {
                             uuid: windows[0]
                         }
 
-                        // Calculates aspect ratio of the PipeWire stream size, which is effectively the window's dimensions
-                        property real aspectRatio: (wl_pw_src.streamSize.height == 0) ? 0.0 : wl_pw_src.streamSize.width / wl_pw_src.streamSize.height
-                        // If the stream's width is larger than the height, and also the aspectRatio is greater or equal to the
-                        // aspect ratio of the maximum thumbnail's dimensions, then it follows that the thumbnail preview's width
-                        // will be at the maximum, therefore it's a fixed known value.
-                        // In this case, the height is calculated through simple proportions
-                        // Otherwise the calculations can be derived in a similar manner
-                        property bool widthTakesPrecedence: (wl_pw_src.streamSize.width > wl_pw_src.streamSize.height) &&
-                                                                 (aspectRatio >= thumbnailRoot.baselineAspectRatio)
-                        onStreamSizeChanged: {
-                            outlineRect.updateSize();
-                        }
-                        onReadyChanged: {
-                            if(ready) outlineRect.updateSize();
+                        onStreamSizeChanged: outlineRect.updateSize()
+                        onReadyChanged: outlineRect.updateSize()
+                        Connections {
+                            target: thumbnailRoot
+                            function onMaxPreviewWidthChanged() { outlineRect.updateSize(); }
+                            function onMaxPreviewHeightChanged() { outlineRect.updateSize(); }
                         }
                         Rectangle {
                             id: outlineRect
                             anchors.centerIn: parent
 
                             function updateSize() {
-                                if(wl_pw_src.aspectRatio === 0.0 || !wl_pw_src.ready) {
+                                if (!wl_pw_src.ready) {
                                     width = 0;
                                     height = 0;
-                                } else if(wl_pw_src.widthTakesPrecedence) {
-                                    width = Math.floor(thumbnailRoot.maxPreviewWidth + 2);
-                                    height = Math.floor((thumbnailRoot.maxPreviewWidth / wl_pw_src.aspectRatio) + 2);
                                 } else {
-                                    width = Math.floor((wl_pw_src.aspectRatio * thumbnailRoot.maxPreviewHeight) + 2);
-                                    height = Math.floor(thumbnailRoot.maxPreviewHeight + 2);
+                                    var size = PreviewMetrics.fitPreview(wl_pw_src.streamSize.width, wl_pw_src.streamSize.height, thumbnailRoot.maxPreviewWidth, thumbnailRoot.maxPreviewHeight);
+                                    width = size.width + 2;
+                                    height = size.height + 2;
                                 }
                             }
                             onHeightChanged: {
@@ -438,41 +445,6 @@ MouseArea {
                     source: thumbnailLoader.item
                 }
             }
-
-            KSvg.FrameSvgItem { // Shown when labels are turned on
-                id: thumbnailClose
-
-                anchors {
-                    top: parent.top
-                    right: parent.right
-                }
-
-                width: 14
-                height: width
-
-                imagePath: Qt.resolvedUrl("svgs/button-close.svg")
-                prefix: thumbnailCloseMa.containsMouse ? (thumbnailCloseMa.containsPress ? "pressed" : "hover") : "normal"
-
-                visible: opacity
-                opacity: (contentMa.containsMouse || thumbnailCloseMa.containsMouse) && !tasks.iconsOnly
-
-                Behavior on opacity {
-                    NumberAnimation { duration: 250 }
-                }
-
-                MouseArea {
-                    id: thumbnailCloseMa
-
-                    anchors.fill: parent
-
-                    hoverEnabled: true
-                    propagateComposedEvents: true
-
-                    onClicked: {
-                        thumbnailRoot.closeTask();
-                    }
-                }
-            }
         }
     }
 
@@ -480,15 +452,40 @@ MouseArea {
         id: mprisControls
 
         anchors.bottom: parent.bottom
-        anchors.right: parent.right
-        anchors.left: parent.left
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: parent.width - thumbnailRoot.margins
+        height: implicitHeight
 
         readonly property QtObject root: thumbnailRoot.root
 
-        active: root.playerData !== null
+        active: root.playerData !== null && root.playerData !== undefined
         asynchronous: true
         source: "PlayerController.qml"
+
+        HoverHandler {
+            onHoveredChanged: if (hovered) {
+                windowPeek.stop();
+                thumbnailRoot.root.endPeek(thumbnailRoot);
+            }
+        }
     }
 
-    Component.onDestruction: if(isGroupDelegate) ListView.view.updateMaxSize()
+    Connections {
+        target: thumbnailRoot.root
+        function onParentTaskChanged() {
+            windowPeek.stop();
+            activationTimer.stop();
+        }
+        function onPopupVisibleChanged() {
+            if (!thumbnailRoot.root.popupVisible) {
+                windowPeek.stop();
+                activationTimer.stop();
+            }
+        }
+    }
+
+    Component.onDestruction: {
+        root.endPeek(thumbnailRoot);
+        if (isGroupDelegate && ListView.view) ListView.view.updateMaxSize();
+    }
 }

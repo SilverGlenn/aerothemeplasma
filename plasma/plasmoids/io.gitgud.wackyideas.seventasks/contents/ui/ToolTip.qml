@@ -1,15 +1,7 @@
 import QtQuick
-import QtQuick.Layouts
-
-import Qt5Compat.GraphicalEffects
 
 import org.kde.kirigami as Kirigami
-import org.kde.kquickcontrolsaddons
-import org.kde.kwindowsystem
-import org.kde.ksvg as KSvg
 
-import org.kde.plasma.core as PlasmaCore
-import org.kde.plasma.plasmoid
 import org.kde.plasma.private.mpris as Mpris
 
 Item {
@@ -19,9 +11,8 @@ Item {
 
     property QtObject parentTask
     onParentTaskChanged: {
-        if(parentTask !== null) {
-            loaderItem.active = true;
-        }
+        cancelPeek();
+        loaderItem.active = parentTask !== null;
     }
     property string display: "undefined"
     property var icon: "undefined"
@@ -33,9 +24,55 @@ Item {
     property var modelIndex
     property var taskIndex
     property bool isGroupParent: false
+    property bool forceList: false
+    readonly property bool popupVisible: parentTask ? parentTask.previewVisible : false
     property bool dragDrop: false
 
     property bool isPeeking: false
+    property Item peekOwner: null
+
+    // Leave room for the popup's theme frame, in logical theme units.
+    readonly property real availableWidth: Math.max(1, tasks.availableScreenRect.width - Kirigami.Units.smallSpacing * 4)
+    readonly property real availableHeight: Math.max(1, tasks.availableScreenRect.height - Kirigami.Units.smallSpacing * 4)
+
+    function beginPeek(owner, windowIds) {
+        if (!popupVisible || !windowIds || windowIds.length === 0) return;
+        peekOwner = owner;
+        tasks.windowsHovered(windowIds, true);
+        isPeeking = true;
+    }
+
+    function endPeek(owner) {
+        if (peekOwner === owner) cancelPeek();
+    }
+
+    function cancelPeek() {
+        if (isPeeking) tasks.cancelHighlightWindows();
+        peekOwner = null;
+        isPeeking = false;
+    }
+
+    function dismiss() {
+        cancelPeek();
+        containsDrag = false;
+        if (parentTask) parentTask.hideImmediately();
+    }
+
+    onWindowsChanged: cancelPeek()
+    onTaskIndexChanged: cancelPeek()
+    onIsGroupParentChanged: cancelPeek()
+    onVisibleChanged: if (!visible) cancelPeek()
+    Component.onDestruction: cancelPeek()
+
+    onPopupVisibleChanged: if (!popupVisible) {
+        cancelPeek();
+        containsDrag = false;
+    }
+
+    Keys.onEscapePressed: event => {
+        dismiss();
+        event.accepted = true;
+    }
 
     // needed for mpris
     property int pidParent
@@ -51,6 +88,8 @@ Item {
     Loader {
         id: loaderItem
 
+        width: tooltip.width
+        height: tooltip.height
         active: false
         asynchronous: true
         sourceComponent: isGroupParent ? groupThumbnails : windowThumbnail

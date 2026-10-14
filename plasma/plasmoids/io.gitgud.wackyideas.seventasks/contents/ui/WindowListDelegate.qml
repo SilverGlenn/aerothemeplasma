@@ -1,14 +1,12 @@
 import QtQuick
 import QtQuick.Layouts
 
-import Qt5Compat.GraphicalEffects
+import "code/Win7PreviewMetrics.js" as PreviewMetrics
 
 import org.kde.kirigami as Kirigami
 import org.kde.ksvg as KSvg
 
-import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasmoid
-import org.kde.plasma.private.mpris as Mpris
 
 MouseArea {
     id: thumbnailRoot
@@ -27,31 +25,49 @@ MouseArea {
     property var modelIndex: tasksModel.makeModelIndex(root.taskIndex, index)
     property var windows: model.WinIdList
     property var minimized: model.IsMinimized
+    readonly property bool demandsAttention: model.IsDemandingAttention
 
-    implicitWidth: captionIcon.width + captionTitle.implicitWidth + 14 + Kirigami.Units.largeSpacing*8
-    onImplicitWidthChanged: ListView.view.updateMaxSize()
-
-    implicitHeight: 33 + Kirigami.Units.smallSpacing*4
-
-    width: {
-        if(ListView.view.maxThumbnailItem !== thumbnailRoot)
-            return ListView.view.maxThumbnailWidth;
-        else
-            return implicitWidth;
-    }
+    readonly property real padding: Kirigami.Units.smallSpacing * 2
+    implicitWidth: PreviewMetrics.boundedSize(captionIcon.width + captionTitle.implicitWidth + 20 + header.spacing * 2 + padding * 2, root.availableWidth)
+    implicitHeight: Math.max(20, captionTitle.implicitHeight) + padding * 2
+    onImplicitWidthChanged: if (ListView.view) ListView.view.updateMaxSize()
+    width: ListView.view ? ListView.view.width : implicitWidth
+    height: implicitHeight
 
     function closeTask() {
+        windowPeek.stop();
+        root.cancelPeek();
         tasksModel.requestClose(modelIndex);
-        if(!isGroupDelegate) root.parentTask.hideImmediately();
     }
+    function activateTask() {
+        windowPeek.stop();
+        root.cancelPeek();
+        tasksModel.requestActivate(modelIndex);
+        root.dismiss();
+    }
+
     hoverEnabled: true
-    propagateComposedEvents: true
+    acceptedButtons: Qt.NoButton
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: display
+    Accessible.onPressAction: activateTask()
+    Keys.onReturnPressed: activateTask()
+    Keys.onEnterPressed: activateTask()
+    Keys.onSpacePressed: activateTask()
+    Keys.onDeletePressed: closeTask()
+    Keys.onEscapePressed: root.dismiss()
+    onActiveFocusChanged: if (activeFocus && ListView.view) ListView.view.positionViewAtIndex(index, ListView.Contain)
+    onWindowsChanged: {
+        windowPeek.stop();
+        root.endPeek(thumbnailRoot);
+    }
+    onMinimizedChanged: if (minimized) root.endPeek(thumbnailRoot)
 
     Item {
         id: frames
 
-        anchors.fill: content
-        anchors.margins: -Kirigami.Units.smallSpacing*2
+        anchors.fill: parent
 
         KSvg.FrameSvgItem {
             id: attentionTexture
@@ -62,7 +78,7 @@ MouseArea {
             prefix: "attention"
 
             visible: demandsAttention
-            opacity: root.parentTask.attentionAnimOpacity
+            opacity: root.parentTask ? root.parentTask.attentionAnimOpacity : 0
         }
 
         KSvg.FrameSvgItem {
@@ -87,7 +103,7 @@ MouseArea {
                 else return "hover";
             }
 
-            opacity: contentMa.containsMouse || closeMa.containsMouse || (!tasks.iconsOnly && root.taskHovered && !isGroupDelegate)
+            opacity: contentMa.containsMouse || closeMa.containsMouse || thumbnailRoot.activeFocus || closeMa.activeFocus
 
             Behavior on opacity {
                 NumberAnimation { duration: 250 }
@@ -106,6 +122,7 @@ MouseArea {
 
         onEntered: {
             root.containsDrag = true;
+            activationTimer.restart();
         }
 
         onExited: {
@@ -114,6 +131,8 @@ MouseArea {
         }
 
         onDropped: event => {
+            activationTimer.stop();
+            root.containsDrag = false;
             if (event.hasUrls) {
                 urlsDropped(event.urls);
                 return;
@@ -128,11 +147,11 @@ MouseArea {
         Timer {
             id: activationTimer
 
-            interval: 250
+            interval: PreviewMetrics.dragActivationDelay
             repeat: false
 
             onTriggered: {
-                tasksModel.requestActivate(modelIndex);
+                if (root.containsDrag && root.popupVisible) tasksModel.requestActivate(modelIndex);
             }
         }
     }
@@ -140,25 +159,21 @@ MouseArea {
     MouseArea {
         id: contentMa
 
-        anchors.fill: content
-        anchors.margins: -Kirigami.Units.smallSpacing*2
+        anchors.fill: parent
 
         hoverEnabled: true
-        propagateComposedEvents: true
+        propagateComposedEvents: false
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
         onContainsMouseChanged: {
-            if(containsMouse) windowPeek.start();
+            if (containsMouse) windowPeek.restart();
             else {
                 windowPeek.stop();
-                root.isPeeking = false;
-                tasks.windowsHovered(thumbnailRoot.windows, false)
+                root.endPeek(thumbnailRoot);
             }
         }
         onClicked: (mouse) => {
             if(mouse.button == Qt.LeftButton) {
-                tasksModel.requestActivate(modelIndex);
-                tasks.windowsHovered(thumbnailRoot.windows, false)
-                root.parentTask.hideImmediately();
+                activateTask();
             }
             if(mouse.button == Qt.MiddleButton) {
                 thumbnailRoot.closeTask();
@@ -169,13 +184,10 @@ MouseArea {
     Timer {
         id: windowPeek
 
-        interval: root.isPeeking ? 1 : 800
+        interval: root.isPeeking ? 1 : PreviewMetrics.peekDelay
         repeat: false
         onTriggered: {
-            if(!minimized) {
-                tasks.windowsHovered(thumbnailRoot.windows, true);
-                root.isPeeking = true;
-            }
+            if (!minimized && contentMa.containsMouse && root.popupVisible) root.beginPeek(thumbnailRoot, windows);
         }
     }
 
@@ -183,7 +195,7 @@ MouseArea {
         id: content
 
         anchors.fill: parent
-        anchors.margins: Kirigami.Units.smallSpacing*4
+        anchors.margins: thumbnailRoot.padding
 
         spacing: Kirigami.Units.smallSpacing/2
 
@@ -191,6 +203,8 @@ MouseArea {
             id: header
 
             spacing: Kirigami.Units.smallSpacing
+            Layout.fillWidth: true
+            Layout.fillHeight: true
 
             Kirigami.Icon {
                 id: captionIcon
@@ -215,41 +229,63 @@ MouseArea {
                 style: Text.Outline
                 styleColor: "#02ffffff"
                 horizontalAlignment: captionAlignment
-                rightPadding: captionAlignment == Text.AlignHCenter ? (close.visible ? 0 : close.width + header.spacing) : 0
+                rightPadding: 0
             }
 
-            KSvg.FrameSvgItem {
-                id: captionClose
-
-                Layout.preferredWidth: 14
-                Layout.preferredHeight: 14
-
-                imagePath: Qt.resolvedUrl("svgs/button-close.svg")
-                prefix: closeMa.containsMouse ? (closeMa.containsPress ? "pressed" : "hover") : "normal"
-
-                visible: opacity
-
-                opacity: contentMa.containsMouse || closeMa.containsMouse
-
-                Behavior on opacity {
-                    NumberAnimation { duration: compositionEnabled ? 250 : 0 }
+            MouseArea {
+                id: closeMa
+                Layout.preferredWidth: 20
+                Layout.preferredHeight: 20
+                hoverEnabled: true
+                acceptedButtons: Qt.LeftButton
+                propagateComposedEvents: false
+                activeFocusOnTab: true
+                Accessible.role: Accessible.Button
+                Accessible.name: i18n("Close %1", thumbnailRoot.display)
+                Accessible.onPressAction: thumbnailRoot.closeTask()
+                onClicked: thumbnailRoot.closeTask()
+                Keys.onReturnPressed: thumbnailRoot.closeTask()
+                Keys.onEnterPressed: thumbnailRoot.closeTask()
+                Keys.onSpacePressed: thumbnailRoot.closeTask()
+                Keys.onEscapePressed: root.dismiss()
+                onActiveFocusChanged: if (activeFocus) {
+                    windowPeek.stop();
+                    root.endPeek(thumbnailRoot);
+                    if (ListView.view) ListView.view.positionViewAtIndex(index, ListView.Contain);
+                }
+                onContainsMouseChanged: if (containsMouse) {
+                    windowPeek.stop();
+                    root.endPeek(thumbnailRoot);
                 }
 
-                MouseArea {
-                    id: closeMa
-
-                    anchors.fill: parent
-
-                    hoverEnabled: true
-                    propagateComposedEvents: true
-
-                    onClicked: {
-                        thumbnailRoot.closeTask();
-                    }
+                KSvg.FrameSvgItem {
+                    anchors.centerIn: parent
+                    width: 14
+                    height: 14
+                    imagePath: Qt.resolvedUrl("svgs/button-close.svg")
+                    prefix: closeMa.containsMouse || closeMa.activeFocus ? (closeMa.containsPress ? "pressed" : "hover") : "normal"
+                    opacity: contentMa.containsMouse || closeMa.containsMouse || thumbnailRoot.activeFocus || closeMa.activeFocus ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 250 } }
                 }
             }
         }
     }
 
-    Component.onDestruction: ListView.view.updateMaxSize()
+    Connections {
+        target: thumbnailRoot.root
+        function onParentTaskChanged() {
+            windowPeek.stop();
+            activationTimer.stop();
+        }
+        function onPopupVisibleChanged() {
+            if (!thumbnailRoot.root.popupVisible) {
+                windowPeek.stop();
+                activationTimer.stop();
+            }
+        }
+    }
+    Component.onDestruction: {
+        root.endPeek(thumbnailRoot);
+        if (ListView.view) ListView.view.updateMaxSize();
+    }
 }
