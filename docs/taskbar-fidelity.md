@@ -10,6 +10,48 @@ keyboard popup entry, compact media accessibility, full-edge template policy,
 repeatable regressions and separate opt-in staging. Native `seventasks.cpp/h` are
 **unchanged**. Upstream root install scripts are not preview installation tools.
 
+## Try it in a visible standalone window
+
+From a terminal in your current KDE desktop:
+
+```bash
+cd ~/Projects/aerothemeplasma-win7
+./scripts/try-taskbar-preview.sh
+```
+
+This uses the already installed `plasmawindowed` host, not `plasmoidviewer`.
+It builds and stages the independent native/QML preview under
+`~/.cache/aerothemeplasma-win7-preview`, then opens a separate window. No sudo,
+widget installation, panel replacement, Plasma restart, or panel-configuration
+edit is performed. Close the preview window to stop it; Ctrl+C in its launching
+terminal also stops it.
+
+The visible preview connects to your desktop's real window model/session bus.
+**Its buttons operate real windows**, including activation, minimize and close.
+Use those actions deliberately. It tests the task-manager widget, not the full
+panel with Start, notification area, clock and Show Desktop. Windowed hosting is
+not identical to a bottom panel; popup anchoring and native focus still require
+live review. You can resize the window into a horizontal strip.
+
+Each run prints its private `window.*/host.log` and config/data/cache directory.
+It copies only `kdeglobals` and `plasmarc` UI preferences read-only for styling;
+it does not copy or alter your panel layout. HOME, display, runtime and session
+bus remain normal for the visible preview. Programs launched from its task
+buttons may inherit the private XDG config/data/cache paths, so prefer existing
+windows for initial testing. This is not a daily-driver replacement.
+
+Other modes:
+
+```bash
+./scripts/try-taskbar-preview.sh --prepare-only # build/stage, no window
+./scripts/try-taskbar-preview.sh --headless     # private offscreen load check; Ctrl+C to stop
+```
+
+The offscreen mode uses its own HOME/runtime/session bus and does not connect to
+the logged-in compositor. The real staged package has loaded in this isolated
+`plasmawindowed` host without QML loading errors; this is additional package-load
+evidence, not validation of real window operations, Aero or live capture.
+
 ## Reproduce without affecting the desktop
 
 Host checked: Qt 6.10.2, Plasma 6.6.6, KF6 6.24; differs from upstream README's
@@ -94,12 +136,13 @@ Optional dedicated offscreen viewer (no panel settings/restart):
 scripts/launch-taskbar-preview.sh /tmp/win7-taskbar-stage
 ```
 
-On this checked host it deliberately exits **3**: `plasmoidviewer` unavailable.
-The script provides private HOME/XDG/D-Bus, explicit `XDG_DATA_DIRS` and
-`QT_PLUGIN_PATH` when a viewer is available. **This path is not tested here**;
-normal Plasma must not be assumed to find a native module in an arbitrary user
-prefix. Native explicit-path factory loading is the only native loading gate passed.
-Do not launch/restart the user's Plasma to work around this limitation.
+This older dedicated-viewer script deliberately exits **3** on this host:
+`plasmoidviewer` is unavailable. It is an offscreen validation path, not the
+visible try-out command. Use `scripts/try-taskbar-preview.sh` above instead;
+its installed `plasmawindowed` host has passed an isolated package-load check.
+Both use explicit `XDG_DATA_DIRS`/`QT_PLUGIN_PATH`; normal Plasma must not be
+assumed to discover a native module in an arbitrary user prefix. Do not
+launch/restart the user's Plasma to work around normal-discovery limitations.
 
 If later expressly approved, optional copying into an explicit user-owned prefix
 is available (not run against the user's prefix during this pass):
@@ -125,7 +168,7 @@ remove that preview widget manually before uninstalling. No script does this.
 
 Independent correctness/fidelity reviews accepted the qualified UI/component
 first pass with notes; that is not approval for live installation or parity claims.
-Full shell native backend contracts, real task operations/QModelIndex wheel
+Full panel native backend contracts, real task operations/QModelIndex wheel
 behavior, external popup dismissal,
 keyboard focus entry through the native popup, compositor/theme margins, touch,
 Wayland capture/KWin Peek and real MPRIS remain unchecked. Accessibility is not

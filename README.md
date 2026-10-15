@@ -15,6 +15,16 @@ See [reference evidence](docs/windows7-taskbar-reference.md),
 Preview commands do not install onto or restart the live desktop. Use the dedicated
 staging utility, **not** the upstream root `install.sh`, to prepare this preview.
 
+To try the task-manager widget in a separate window without replacing your panel:
+
+```bash
+./scripts/try-taskbar-preview.sh
+```
+
+It uses the installed `plasmawindowed` host, keeps preview settings separate, and
+operates on real desktop windows. Close the preview window to stop. See the
+validation/staging document above for limitations and headless testing.
+
 ## HIATUS NOTICE: This is a long overdue announcement, but development will slow down significantly as a result of real life priorities I have to take care of first. Estimated time until I continue development is unknown, but don't expect anything significant in the following few months, until August, probably. Thank you for your patience and support.
 
 ## Microsoft® Windows™ is a registered trademark of Microsoft® Corporation. This name is used for referential use only, and does not aim to usurp copyrights from Microsoft. Microsoft Ⓒ 2025 All rights reserved. All resources belong to Microsoft Corporation.
