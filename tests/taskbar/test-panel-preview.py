@@ -647,6 +647,18 @@ class ControllerTest(unittest.TestCase):
 
 
 class OwnershipAndPlatformTest(unittest.TestCase):
+    def test_desktop_query_prints_json_for_plasma_evaluate_script_transport(self):
+        platform = p.Platform("/fake/qdbus6")
+        def bus(*args):
+            if args[2] == "org.kde.PlasmaShell.evaluateScript":
+                # evaluateScript returns print() output, NOT the last JS value.
+                self.assertTrue(args[3].startswith("print(JSON.stringify("))
+                self.assertTrue(args[3].endswith(")));"))
+                return json.dumps([{"id": 2, "type": p.PANEL}])
+            return p.SHELL
+        with patch.object(platform, "bus", side_effect=bus), patch.object(platform, "owner", return_value=identity()):
+            self.assertEqual(platform.desktop(), (p.SHELL, 2, identity()))
+
     def test_proc_identity_has_exact_start_ticks_and_handles_comm_parentheses(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)

@@ -190,7 +190,7 @@ class Platform:
                          "org.freedesktop.DBus.Properties.Get", "org.kde.PlasmaShell", "shell")
         config_names(shell)
         panels = json.loads(self.bus("org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.evaluateScript",
-                                    "JSON.stringify(panels().map(function(p) { return {id:p.id,type:p.type}; }))"))
+                                    "print(JSON.stringify(panels().map(function(p) { return {id:p.id,type:p.type}; })));"))
         require(len(panels) == 1 and panels[0]["type"] == PANEL and isinstance(panels[0]["id"], int),
                 "expected one real Aero panel")
         return shell, panels[0]["id"], self.owner("org.kde.plasmashell")
