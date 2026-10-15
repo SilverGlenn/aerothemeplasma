@@ -164,6 +164,42 @@ preview; unrelated taskbar installation remains untouched. Before any manual liv
 panel addition, back up Plasma's configuration yourself under separate approval;
 remove that preview widget manually before uninstalling. No script does this.
 
+## Temporary real-panel preview (explicitly approved runs only)
+
+The independent panel preview controller stages the currently installed panel and
+its exit control under a private data shadow; it does not replace installed
+packages. The controller is intentionally a separate, temporary operation, not a
+normal install or startup path. Only run it after the required source-backed
+safety review and explicit activation approval:
+
+```bash
+python3 scripts/panel-preview.py check
+python3 scripts/panel-preview.py start
+```
+
+When the real panel reports ready, **Exit preview** is centered on the target
+panel. Click it to request a graceful return to the installed panel. If the
+control is unavailable, emergency restoration is independent of the panel:
+
+```bash
+python3 scripts/panel-preview.py restore
+```
+
+A preview automatically begins recovery within 10 minutes; `start --timeout N`
+can select a shorter interval from 1 to 600 seconds. Recovery stops only the
+recorded preview shell, restores the post-stop configuration snapshots, then
+starts the normal managed shell when the desktop session remains active. Session
+snapshots, checksums, modes and recovery logs are retained privately for
+inspection; the controller does not clean them up automatically.
+
+Snapshots cover only the verified shell layout file and `plasmashellrc`, captured
+after the original shell stops and flushes its configuration. This is not a full
+backup of the user's Plasma configuration or a guarantee against unrelated
+external edits, persistent storage failures, or loss of the user systemd
+manager. Do not manually edit those files while the preview is active. Integration
+tests exercise temporary files and mocked platform operations; they do not run
+this live start/restore workflow.
+
 ## Remaining acceptance gates
 
 Independent correctness/fidelity reviews accepted the qualified UI/component
