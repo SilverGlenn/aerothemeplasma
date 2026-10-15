@@ -33,6 +33,7 @@ SYSTEMD_RUN = "/usr/bin/systemd-run"
 INSTALLED = Path("/usr/share/plasma/plasmoids")
 PROC_ROOT = Path("/proc")
 CGROUP_ROOT = Path("/sys/fs/cgroup")
+RUNTIME_BASE = Path("/run/user")
 ROOT = Path(__file__).resolve().parents[1]
 STARTUP_SECONDS = 30
 ENV_KEYS = ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_DATA_DIRS",
@@ -197,7 +198,7 @@ class Platform:
 
     def service(self):
         output = command([SYSTEMCTL, "--user", "show", SERVICE,
-                          "--property=ActiveState,SubState,MainPID,ControlGroup,ExecStart"])
+                          "--property=ActiveState,SubState,MainPID,ControlGroup,ExecStart,KillMode"])
         return dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
 
     def managed(self):
@@ -222,11 +223,17 @@ class Platform:
         members = set()
         for path in [directory / "cgroup.procs", *directory.glob("**/cgroup.procs")]:
             members.update(int(p) for p in path.read_text().split())
-        require(members == {pid}, "original cgroup contains unrelated processes; refusing to stop")
+        require(pid in members, "original main PID missing from managed cgroup")
+        return members
 
-    def stop_original(self, expected):
-        # Re-query identity AND recursive membership immediately before systemctl stop.
+    def stop_original(self, expected, expected_cgroup):
+        # Extra members are preserved, never signalled: stopping is permitted only
+        # with the effective process-only policy, rechecked immediately before stop.
         require(same_process(expected, self.managed()), "original service changed")
+        info = self.service()
+        require(info.get("KillMode") == "process", "process-only stop policy not effective")
+        require(info.get("ControlGroup") == expected_cgroup and int(info["MainPID"]) == expected["pid"],
+                "original managed cgroup changed")
         command([SYSTEMCTL, "--user", "stop", SERVICE], timeout=50)
         require(not same_process(expected, proc_identity(expected["pid"])), "original still writing")
         require(self.service().get("ActiveState") == "inactive", "original did not stop cleanly")
@@ -260,11 +267,16 @@ def validate_configs(state):
 def preflight(platform, env):
     no_home_override(env)
     original = platform.managed()
+    info = platform.service()
+    require(int(info["MainPID"]) == original["pid"], "original service changed during preflight")
+    require(info["KillMode"] in ("control-group", "mixed", "process", "none"), "unknown original KillMode")
     shell, panel_id, owner = platform.desktop()
     require(same_process(original, owner), "D-Bus shell is not managed service")
     state = {"version": 1, "uid": os.getuid(), "env": env, "shell": shell,
              "panel_id": panel_id, "original": original, "kwin": platform.owner("org.kde.KWin"),
-             "qdbus": platform.qdbus}
+             "qdbus": platform.qdbus, "original_kill_mode": info["KillMode"],
+             "original_cgroup": info["ControlGroup"], "stop_policy": None,
+             "restart_complete": False}
     validate_configs(state)
     return state
 
@@ -331,6 +343,123 @@ def active_session(root):
     name = pointer.read_text()
     require(re.fullmatch(r"[0-9a-f]{32}", name), "invalid active pointer")
     return no_symlinks(root / name)
+
+
+def stop_policy_paths(state):
+    runtime = no_symlinks(RUNTIME_BASE / str(state["uid"]))
+    require(state["env"].get("XDG_RUNTIME_DIR") == str(runtime), "noncanonical user runtime directory")
+    info = runtime.stat()
+    require(info.st_uid == state["uid"] and stat.S_IMODE(info.st_mode) == 0o700
+            and stat.S_ISDIR(info.st_mode), "unsafe user runtime directory")
+    directory = no_symlinks(runtime / "systemd/user" / (SERVICE + ".d"))
+    token = state["unit"].removesuffix(".service")
+    return directory / ("zzzz-" + token + ".conf"), directory / ("." + token + ".payload")
+
+
+def policy_content(state):
+    return f"# Transaction-owned: {state['unit']}\n[Service]\nKillMode=process\n"
+
+
+def validate_policy_record(state):
+    record = state["stop_policy"]
+    final, payload = stop_policy_paths(state)
+    content = policy_content(state)
+    require(record["path"] == str(final) and record["payload"] == str(payload)
+            and record["content"] == content
+            and record["sha256"] == hashlib.sha256(content.encode()).hexdigest()
+            and record["uid"] == state["uid"] and record["mode"] == 0o600,
+            "invalid runtime stop-policy ownership record")
+    return final, payload
+
+
+def owned_policy_file(path, record):
+    # Missing links are normal after interrupted cleanup. Any present object must
+    # prove identity AND unchanged contents; identical-content foreign files fail.
+    try:
+        fd = os.open(no_symlinks(path), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return False
+    try:
+        info = os.fstat(fd)
+        require(stat.S_ISREG(info.st_mode) and record.get("inode") == info.st_ino
+                and record.get("device") == info.st_dev and info.st_uid == record["uid"]
+                and stat.S_IMODE(info.st_mode) == record["mode"], "runtime stop-policy file is not owned")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            data = stream.read()
+        require(hashlib.sha256(data).hexdigest() == record["sha256"], "runtime stop-policy content changed")
+        return True
+    finally:
+        os.close(fd)
+
+
+def setup_stop_policy(session, state, platform):
+    mode = platform.service().get("KillMode")
+    require(mode == state["original_kill_mode"], "original KillMode changed since prepare")
+    if mode == "process":
+        return
+    final, payload = stop_policy_paths(state)
+    content = policy_content(state)
+    record = {"path": str(final), "payload": str(payload), "content": content,
+              "sha256": hashlib.sha256(content.encode()).hexdigest(), "uid": state["uid"],
+              "mode": 0o600, "inode": None, "device": None, "needs_reload": False, "cleaned": False}
+    state.update(stop_policy=record, phase="policy-planned")
+    save(session, state)  # canonical paths and expected bytes precede all creation
+    final.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    directory = final.parent.stat()
+    require(directory.st_uid == state["uid"] and not directory.st_mode & 0o022, "unsafe runtime drop-in directory")
+    fd = os.open(payload, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, "wb", closefd=False) as stream:
+            stream.write(content.encode())
+            stream.flush()
+            os.fchmod(fd, 0o600)
+            os.fsync(fd)
+        info = os.fstat(fd)
+    finally:
+        os.close(fd)
+    fsync_dir(final.parent)
+    record.update(inode=info.st_ino, device=info.st_dev)
+    state["phase"] = "policy-staged"
+    save(session, state)  # identity is durable BEFORE exclusive atomic publication
+    os.link(payload, final, follow_symlinks=False)
+    fsync_dir(final.parent)
+    state["phase"] = "policy-published"
+    record["needs_reload"] = True
+    save(session, state)
+    command([SYSTEMCTL, "--user", "daemon-reload"])
+    require(owned_policy_file(final, record), "published stop-policy file disappeared")
+    require(platform.service().get("KillMode") == "process", "process-only stop policy not effective")
+    state["phase"] = "policy-applied"
+    save(session, state)
+
+
+def cleanup_stop_policy(session, state, platform):
+    record = state.get("stop_policy")
+    if not record or record["cleaned"]:
+        return
+    final, payload = validate_policy_record(state)
+    if record["inode"] is None:
+        # A crash before the inode commit can leave an inert .payload orphan.
+        # Neither it nor any colliding final file has proven transaction ownership.
+        require(not final.exists() and not final.is_symlink(), "unproven runtime drop-in; not removing")
+        record["cleaned"] = True
+        save(session, state)
+        return
+    final_owned = owned_policy_file(final, record)
+    payload_owned = owned_policy_file(payload, record)
+    record["needs_reload"] = record["needs_reload"] or final_owned
+    state["phase"] = "policy-cleaning"
+    save(session, state)  # recovery must reload even if it dies after unlink
+    if final_owned:
+        final.unlink()
+    if payload_owned:
+        payload.unlink()
+    fsync_dir(final.parent)
+    if record["needs_reload"]:
+        command([SYSTEMCTL, "--user", "daemon-reload"])
+        require(platform.service().get("KillMode") == state["original_kill_mode"], "original KillMode not restored")
+    record.update(needs_reload=False, cleaned=True)
+    save(session, state)
 
 
 def snapshot_flushed(session, state):
@@ -418,10 +547,16 @@ def recover(session, platform=None):
             state["phase"] = "configs-restored"
             save(session, state)
         platform = platform or Platform(state["qdbus"])
-        state["original_restarted"] = False
-        if state["stop_requested"] and platform.session_alive(state):
-            platform.start_original()
-            state["original_restarted"] = True
+        if not state.get("restart_complete", False):
+            state["original_restarted"] = False
+            if state["stop_requested"] and platform.session_alive(state):
+                require(platform.service().get("KillMode") == "process", "restart requires process-only policy")
+                platform.start_original()
+                state["original_restarted"] = True
+            state["restart_complete"] = True
+            state["phase"] = "original-restart-complete"
+            save(session, state)
+        cleanup_stop_policy(session, state, platform)
         state["phase"] = FINAL
         save(session, state)
         return state
@@ -489,9 +624,10 @@ def guardian(session, platform=None):
         shell, panel_id, owner = platform.desktop()
         require(shell == state["shell"] and panel_id == state["panel_id"]
                 and same_process(state["original"], owner), "desktop changed since prepare")
+        setup_stop_policy(session, state, platform)
         state.update(phase="stopping-original", stop_requested=True)
         save(session, state)
-        platform.stop_original(state["original"])
+        platform.stop_original(state["original"], state["original_cgroup"])
         snapshot_flushed(session, state)
         state["phase"] = "launching"
         save(session, state)

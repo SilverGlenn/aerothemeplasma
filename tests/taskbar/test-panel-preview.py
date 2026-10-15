@@ -48,6 +48,11 @@ class FakePlatform:
         self.stops = 0
         self.starts = 0
         self.flushed = b"flushed original\x00\xff\n"
+        self.kill_mode = "process"
+
+    def service(self):
+        return {"KillMode": self.kill_mode, "MainPID": str(self.original["pid"]),
+                "ControlGroup": "/session/plasma"}
 
     def managed(self):
         return self.original
@@ -61,7 +66,7 @@ class FakePlatform:
     def session_alive(self, state):
         return self.alive
 
-    def stop_original(self, expected):
+    def stop_original(self, expected, expected_cgroup=None):
         self.test.assertEqual(expected, self.original)
         self.stops += 1
         self.test.layout.write_bytes(self.flushed)
@@ -80,8 +85,14 @@ class ControllerTest(unittest.TestCase):
         self.config.mkdir(parents=True)
         self.data = self.home / ".local/share"
         self.data.mkdir(parents=True)
+        runtime_base = self.base / "run/user"
+        runtime = runtime_base / str(os.getuid())
+        runtime.mkdir(mode=0o700, parents=True)
+        runtime_patch = patch.object(p, "RUNTIME_BASE", runtime_base)
+        runtime_patch.start()
+        self.addCleanup(runtime_patch.stop)
         self.env = p.environment({"HOME": str(self.home), "XDG_CONFIG_HOME": str(self.config),
-                                  "XDG_DATA_HOME": str(self.data), "XDG_RUNTIME_DIR": str(self.base / "runtime"),
+                                  "XDG_DATA_HOME": str(self.data), "XDG_RUNTIME_DIR": str(runtime),
                                   "DISPLAY": ":1", "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
                                   "TOKEN": "do-not-record", "AWS_SECRET_ACCESS_KEY": "do-not-record"})
         self.state_root = self.home / ".local/state/preview"
@@ -251,7 +262,7 @@ class ControllerTest(unittest.TestCase):
         for phase in ("preparing", "prepared", "prepare-failed", "armed", "stopping-original"):
             with self.subTest(phase=phase):
                 state = self.state()
-                state.update(phase=phase, stop_requested=(phase == "stopping-original"), restore_needed=False)
+                state.update(phase=phase, stop_requested=(phase == "stopping-original"), restore_needed=False, restart_complete=False)
                 p.save(self.session, state)
                 self.layout.write_bytes(b"newly flushed, no authoritative snapshot")
                 self.recover()
@@ -640,6 +651,317 @@ class ControllerTest(unittest.TestCase):
         self.assertIn("recovery complete: restored", (self.session / "recovery.log").read_text())
         self.assertEqual(self.layout.read_bytes(), b"pre-stop config\x00\xfe")
 
+    def policy_prepare(self):
+        self.platform.kill_mode = "control-group"
+        self.prepare()
+        return p.stop_policy_paths(self.state())
+
+    def policy_reload(self, args, timeout=15):
+        self.assertEqual(args, [p.SYSTEMCTL, "--user", "daemon-reload"])
+        final, _ = p.stop_policy_paths(self.state())
+        self.platform.kill_mode = "process" if final.exists() else "control-group"
+
+    def test_process_only_policy_is_owned_runtime_only_and_kept_through_restart(self):
+        final, payload = self.policy_prepare()
+        original_bytes = self.layout.read_bytes()
+        with patch.object(p, "command", side_effect=self.policy_reload) as reload, \
+                patch.object(p.os, "pidfd_open") as signal_process:
+            state = self.state()
+            p.setup_stop_policy(self.session, state, self.platform)
+            record = self.state()["stop_policy"]
+            self.assertEqual(record["path"], str(final))
+            self.assertEqual(final.stat().st_ino, record["inode"])
+            self.assertEqual(final.stat().st_dev, record["device"])
+            self.assertEqual(final.stat().st_ino, payload.stat().st_ino)
+            self.assertEqual(final.read_text(), p.policy_content(state))
+            self.assertEqual(self.platform.kill_mode, "process")
+            self.assertEqual(self.layout.read_bytes(), original_bytes)
+            self.snapshot()
+            self.layout.write_bytes(b"preview")
+            def normal_start():
+                self.assertTrue(final.exists())
+                self.assertEqual(self.platform.kill_mode, "process")
+                self.platform.starts += 1
+            with patch.object(self.platform, "start_original", side_effect=normal_start):
+                self.recover()
+            self.assertFalse(final.exists() or payload.exists())
+            self.assertEqual(self.platform.kill_mode, "control-group")
+            self.assertEqual(reload.call_count, 2)
+            self.assertEqual(self.layout.read_bytes(), self.platform.flushed)
+            signal_process.assert_not_called()
+            self.recover()
+            self.assertEqual(reload.call_count, 2)
+            self.assertEqual(self.platform.starts, 1)
+
+    def test_already_process_policy_creates_no_override_or_reload(self):
+        self.prepare()
+        state = self.state()
+        p.setup_stop_policy(self.session, state, self.platform)
+        self.assertIsNone(self.state()["stop_policy"])
+        self.assertFalse((Path(self.env["XDG_RUNTIME_DIR"]) / "systemd").exists())
+        self.recover()
+
+    def test_policy_setup_reload_failure_aborts_before_original_stop(self):
+        final, payload = self.policy_prepare()
+        state = self.state()
+        state["phase"] = "armed"
+        p.save(self.session, state)
+        def reload_then_error(args, timeout=15):
+            self.policy_reload(args, timeout)
+            raise subprocess.CalledProcessError(1, ["mock-reload"])
+        with patch.object(p, "command", side_effect=reload_then_error):
+            with self.assertRaises(subprocess.CalledProcessError):
+                p.guardian(self.session, self.platform)
+        self.assertEqual(self.platform.kill_mode, "process")
+        self.assertEqual((self.platform.stops, self.platform.starts), (0, 0))
+        self.assertFalse(self.state()["stop_requested"])
+        with patch.object(p, "command", side_effect=self.policy_reload):
+            self.recover()
+        self.assertFalse(final.exists() or payload.exists())
+        self.assertEqual(self.platform.kill_mode, "control-group")
+
+    def test_ineffective_policy_aborts_before_original_stop(self):
+        self.policy_prepare()
+        state = self.state()
+        state["phase"] = "armed"
+        p.save(self.session, state)
+        with patch.object(p, "command", return_value=""):
+            with self.assertRaisesRegex(p.Unsafe, "not effective"):
+                p.guardian(self.session, self.platform)
+            self.recover()
+        self.assertEqual((self.platform.stops, self.platform.starts), (0, 0))
+
+    def test_foreign_identical_dropin_collision_is_not_removed(self):
+        final, payload = self.policy_prepare()
+        final.parent.mkdir(mode=0o700, parents=True)
+        final.write_text(p.policy_content(self.state()))
+        final.chmod(0o600)
+        inode = final.stat().st_ino
+        with self.assertRaises(FileExistsError):
+            p.setup_stop_policy(self.session, self.state(), self.platform)
+        self.assertNotEqual(payload.stat().st_ino, inode)
+        with self.assertRaisesRegex(p.Unsafe, "not owned"):
+            self.recover()
+        self.assertEqual(final.stat().st_ino, inode)
+        self.assertEqual((self.platform.stops, self.platform.starts), (0, 0))
+        final.unlink()  # remove test fixture's foreign collision, not production code
+        self.recover()
+        self.assertFalse(payload.exists())
+
+    def test_policy_symlink_and_nonregular_collisions_fail_closed(self):
+        for kind in ("symlink", "directory"):
+            with self.subTest(kind=kind):
+                final, payload = self.policy_prepare()
+                final.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                target = self.base / "foreign-target"
+                target.write_bytes(b"foreign")
+                if kind == "symlink":
+                    final.symlink_to(target)
+                else:
+                    final.mkdir()
+                with self.assertRaises(FileExistsError):
+                    p.setup_stop_policy(self.session, self.state(), self.platform)
+                with self.assertRaises(p.Unsafe):
+                    self.recover()
+                self.assertEqual(target.read_bytes(), b"foreign")
+                self.assertEqual(self.platform.stops, 0)
+                if kind == "symlink":
+                    final.unlink()
+                else:
+                    final.rmdir()
+                self.recover()
+                self.assertFalse(payload.exists())
+
+    def test_changed_owned_dropin_content_or_mode_is_never_deleted(self):
+        final, _ = self.policy_prepare()
+        with patch.object(p, "command", side_effect=self.policy_reload):
+            p.setup_stop_policy(self.session, self.state(), self.platform)
+            original = final.read_bytes()
+            final.write_bytes(b"foreign modification")
+            with self.assertRaisesRegex(p.Unsafe, "content changed"):
+                self.recover()
+            self.assertEqual(final.read_bytes(), b"foreign modification")
+            final.write_bytes(original)
+            final.chmod(0o644)
+            with self.assertRaisesRegex(p.Unsafe, "not owned"):
+                self.recover()
+            self.assertTrue(final.exists())
+            final.chmod(0o600)
+            self.recover()
+        self.assertEqual(self.platform.stops, 0)
+
+    def test_payload_collision_uses_exclusive_create_and_preserves_foreign_file(self):
+        final, payload = self.policy_prepare()
+        payload.parent.mkdir(mode=0o700, parents=True)
+        payload.write_bytes(b"preexisting foreign payload")
+        with self.assertRaises(FileExistsError):
+            p.setup_stop_policy(self.session, self.state(), self.platform)
+        self.recover()
+        self.assertEqual(payload.read_bytes(), b"preexisting foreign payload")
+        self.assertFalse(final.exists())
+        self.assertEqual(self.platform.stops, 0)
+
+    def test_exdev_publication_failure_cleans_only_proven_payload(self):
+        import errno
+        final, payload = self.policy_prepare()
+        with patch.object(p.os, "link", side_effect=OSError(errno.EXDEV, "cross-device")):
+            with self.assertRaises(OSError):
+                p.setup_stop_policy(self.session, self.state(), self.platform)
+        self.recover()  # no reload needed; no .conf was published
+        self.assertFalse(final.exists() or payload.exists())
+        self.assertEqual(self.platform.stops, 0)
+
+    def test_crash_before_stage_inode_commit_leaves_only_inert_unproven_payload(self):
+        final, payload = self.policy_prepare()
+        real_save = p.save
+        def before_identity_commit(session, state):
+            if state["phase"] == "policy-staged":
+                raise RuntimeError("crash before inode commit")
+            real_save(session, state)
+        with patch.object(p, "save", side_effect=before_identity_commit):
+            with self.assertRaises(RuntimeError):
+                p.setup_stop_policy(self.session, self.state(), self.platform)
+        self.assertIsNone(self.state()["stop_policy"]["inode"])
+        self.recover()
+        self.assertFalse(final.exists())
+        self.assertTrue(payload.exists())
+        self.assertFalse(payload.name.endswith(".conf"))
+        self.assertEqual(self.platform.stops, 0)
+
+    def test_publication_before_flag_crash_is_recovered_by_inode(self):
+        final, payload = self.policy_prepare()
+        real_link = os.link
+        def publish_then_crash(*args, **kwargs):
+            real_link(*args, **kwargs)
+            raise RuntimeError("crash after publication before flag")
+        with patch.object(p.os, "link", side_effect=publish_then_crash):
+            with self.assertRaises(RuntimeError):
+                p.setup_stop_policy(self.session, self.state(), self.platform)
+        self.assertEqual(self.state()["phase"], "policy-staged")
+        self.assertFalse(self.state()["stop_policy"]["needs_reload"])
+        with patch.object(p, "command", side_effect=self.policy_reload) as reload:
+            self.recover()
+            reload.assert_called_once()
+        self.assertFalse(final.exists() or payload.exists())
+        self.assertEqual(self.platform.kill_mode, "control-group")
+
+    def test_policy_and_original_stop_crash_phases_restore_owned_policy(self):
+        for phase in ("policy-planned", "policy-staged", "policy-published", "policy-applied",
+                      "stopping-original", "snapshotted", "launching"):
+            with self.subTest(phase=phase):
+                final, payload = self.policy_prepare()
+                state = self.state()
+                state["phase"] = "armed"
+                p.save(self.session, state)
+                real_save = p.save
+                def after_commit(session, state):
+                    real_save(session, state)
+                    if state["phase"] == phase:
+                        raise RuntimeError("crash at " + phase)
+                with patch.object(p, "command", side_effect=self.policy_reload), patch.object(p, "save", side_effect=after_commit):
+                    with self.assertRaises(RuntimeError):
+                        p.guardian(self.session, self.platform)
+                with patch.object(p, "command", side_effect=self.policy_reload):
+                    self.recover()
+                self.assertEqual(self.state()["phase"], p.FINAL)
+                self.assertFalse(final.exists() or payload.exists())
+                self.assertEqual(self.platform.kill_mode, "control-group")
+
+    def test_cleanup_unlink_crash_never_rewrites_restarted_shell_config(self):
+        final, payload = self.policy_prepare()
+        with patch.object(p, "command", side_effect=self.policy_reload):
+            p.setup_stop_policy(self.session, self.state(), self.platform)
+            self.snapshot()
+            def normal_start():
+                self.assertEqual(self.platform.kill_mode, "process")
+                self.platform.starts += 1
+                self.layout.write_bytes(b"normal shell newly flushed")
+            real_unlink = Path.unlink
+            def unlink_then_crash(path, *args, **kwargs):
+                real_unlink(path, *args, **kwargs)
+                if path == final:
+                    raise RuntimeError("crash after final unlink")
+            with patch.object(self.platform, "start_original", side_effect=normal_start), patch.object(Path, "unlink", unlink_then_crash):
+                with self.assertRaises(RuntimeError):
+                    self.recover()
+            self.assertTrue(self.state()["restart_complete"])
+            self.assertFalse(self.state()["restore_needed"])
+            self.assertTrue(self.state()["stop_policy"]["needs_reload"])
+            self.recover()
+            self.recover()
+        self.assertEqual(self.platform.starts, 1)
+        self.assertEqual(self.layout.read_bytes(), b"normal shell newly flushed")
+        self.assertEqual(self.platform.kill_mode, "control-group")
+        self.assertFalse(final.exists() or payload.exists())
+
+    def test_cleanup_reload_crash_is_idempotent_without_restarting_again(self):
+        final, payload = self.policy_prepare()
+        with patch.object(p, "command", side_effect=self.policy_reload):
+            p.setup_stop_policy(self.session, self.state(), self.platform)
+            self.snapshot()
+        def reload_then_crash(args, timeout=15):
+            self.policy_reload(args, timeout)
+            raise RuntimeError("crash after cleanup reload")
+        with patch.object(p, "command", side_effect=reload_then_crash):
+            with self.assertRaises(RuntimeError):
+                self.recover()
+        self.layout.write_bytes(b"normal shell keeps writing")
+        self.assertEqual(self.platform.starts, 1)
+        with patch.object(p, "command", side_effect=self.policy_reload):
+            self.recover()
+        self.assertEqual(self.platform.starts, 1)
+        self.assertEqual(self.layout.read_bytes(), b"normal shell keeps writing")
+        self.assertFalse(final.exists() or payload.exists())
+        self.assertEqual(self.platform.kill_mode, "control-group")
+
+    def test_original_policy_verification_failure_blocks_final_until_reload_succeeds(self):
+        self.policy_prepare()
+        with patch.object(p, "command", side_effect=self.policy_reload):
+            p.setup_stop_policy(self.session, self.state(), self.platform)
+            self.snapshot()
+        with patch.object(p, "command", return_value=""):
+            with self.assertRaisesRegex(p.Unsafe, "original KillMode not restored"):
+                self.recover()
+        self.assertNotEqual(self.state()["phase"], p.FINAL)
+        self.assertFalse(self.state()["stop_policy"]["cleaned"])
+        self.layout.write_bytes(b"restarted shell current config")
+        with patch.object(p, "command", side_effect=self.policy_reload):
+            self.recover()
+        self.assertEqual(self.layout.read_bytes(), b"restarted shell current config")
+        self.assertEqual(self.platform.starts, 1)
+        self.assertEqual(self.platform.kill_mode, "control-group")
+
+    def test_logout_still_removes_override_and_restores_effective_policy(self):
+        final, payload = self.policy_prepare()
+        with patch.object(p, "command", side_effect=self.policy_reload):
+            p.setup_stop_policy(self.session, self.state(), self.platform)
+            self.snapshot()
+            self.platform.alive = False
+            self.layout.write_bytes(b"preview")
+            self.recover()
+        self.assertEqual(self.platform.starts, 0)
+        self.assertEqual(self.layout.read_bytes(), self.platform.flushed)
+        self.assertEqual(self.platform.kill_mode, "control-group")
+        self.assertFalse(final.exists() or payload.exists())
+
+    def test_policy_paths_cannot_escape_canonical_runtime(self):
+        self.policy_prepare()
+        state = self.state()
+        state["env"]["XDG_RUNTIME_DIR"] = str(self.base / "not-runtime")
+        with self.assertRaisesRegex(p.Unsafe, "noncanonical"):
+            p.setup_stop_policy(self.session, state, self.platform)
+        state = self.state()
+        with patch.object(p, "command", side_effect=self.policy_reload):
+            p.setup_stop_policy(self.session, state, self.platform)
+            state = self.state()
+            foreign = self.base / "foreign.conf"
+            foreign.write_bytes(b"foreign")
+            state["stop_policy"]["path"] = str(foreign)
+            p.save(self.session, state)
+            with self.assertRaisesRegex(p.Unsafe, "ownership record"):
+                self.recover()
+            self.assertEqual(foreign.read_bytes(), b"foreign")
+
     def test_timeouts_are_bounded(self):
         for timeout in (-1, 0, 601):
             with self.subTest(timeout=timeout), self.assertRaises(p.Unsafe):
@@ -723,7 +1045,7 @@ class OwnershipAndPlatformTest(unittest.TestCase):
             cg = base / "cgroup/session/plasma"
             cg.mkdir(parents=True)
             (cg / "cgroup.procs").write_text("123\n")
-            properties = {"ActiveState": "active", "SubState": "running", "MainPID": "123", "ControlGroup": "/session/plasma",
+            properties = {"ActiveState": "active", "SubState": "running", "MainPID": "123", "ControlGroup": "/session/plasma", "KillMode": "control-group",
                           "ExecStart": "{ path=/usr/bin/plasmashell ; argv[]=/usr/bin/plasmashell --no-respawn ; ignore_errors=no ; }"}
             platform = p.Platform("/fake/qdbus6")
             with patch.object(p, "PROC_ROOT", base / "proc"), patch.object(p, "CGROUP_ROOT", base / "cgroup"), \
@@ -733,24 +1055,48 @@ class OwnershipAndPlatformTest(unittest.TestCase):
                 child = cg / "child"
                 child.mkdir()
                 (child / "cgroup.procs").write_text("999\n")
-                with self.assertRaisesRegex(p.Unsafe, "unrelated"):
-                    platform.stop_original(identity(123))
+                self.assertEqual(platform.managed(), identity(123))  # extra PID is preserved
+                with self.assertRaisesRegex(p.Unsafe, "process-only"):
+                    platform.stop_original(identity(123), "/session/plasma")
                 command.assert_not_called()
+                properties["KillMode"] = "process"
+                def stopped(*args, **kwargs):
+                    properties["ActiveState"] = "inactive"
+                command.side_effect = stopped
+                with patch.object(p, "proc_identity", side_effect=[identity(123), None]), \
+                        patch.object(p.signal, "pidfd_send_signal") as signal_process:
+                    platform.stop_original(identity(123), "/session/plasma")
+                    signal_process.assert_not_called()
+                command.assert_called_once_with([p.SYSTEMCTL, "--user", "stop", p.SERVICE], timeout=50)
+                self.assertEqual((child / "cgroup.procs").read_text(), "999\n")
+                command.reset_mock()
+                command.side_effect = None
+                properties["ActiveState"] = "active"
                 (child / "cgroup.procs").write_text("")
                 properties["MainPID"] = "124"
                 with self.assertRaises((p.Unsafe, FileNotFoundError)):
-                    platform.stop_original(identity(123))
+                    platform.stop_original(identity(123), "/session/plasma")
                 command.assert_not_called()
 
     def test_managed_stop_waits_for_process_and_inactive_unit(self):
         platform = p.Platform("/fake/qdbus6")
         with patch.object(platform, "managed", return_value=identity()), patch.object(p, "command") as command, \
-                patch.object(p, "proc_identity", return_value=None), patch.object(platform, "service", return_value={"ActiveState": "inactive"}):
-            platform.stop_original(identity())
+                patch.object(p, "proc_identity", return_value=None), patch.object(platform, "service", side_effect=[{"KillMode": "process", "ControlGroup": "/session/plasma", "MainPID": "12345"}, {"ActiveState": "inactive"}]):
+            platform.stop_original(identity(), "/session/plasma")
             command.assert_called_once_with([p.SYSTEMCTL, "--user", "stop", p.SERVICE], timeout=50)
         with patch.object(platform, "managed", return_value=identity()), patch.object(p, "command"), \
+                patch.object(platform, "service", return_value={"KillMode": "process", "ControlGroup": "/session/plasma", "MainPID": "12345"}), \
                 patch.object(p, "proc_identity", return_value=identity()), self.assertRaisesRegex(p.Unsafe, "still writing"):
-            platform.stop_original(identity())
+            platform.stop_original(identity(), "/session/plasma")
+
+    def test_process_only_stop_still_rejects_changed_managed_cgroup(self):
+        platform = p.Platform("/fake/qdbus6")
+        with patch.object(platform, "managed", return_value=identity()), \
+                patch.object(platform, "service", return_value={"KillMode": "process", "MainPID": "12345", "ControlGroup": "/moved"}), \
+                patch.object(p, "command") as command:
+            with self.assertRaisesRegex(p.Unsafe, "cgroup changed"):
+                platform.stop_original(identity(), "/session/plasma")
+            command.assert_not_called()
 
     def test_kwin_identity_not_a_name_only_logout_check(self):
         platform = p.Platform("/fake/qdbus6")
