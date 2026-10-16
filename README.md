@@ -1,241 +1,220 @@
-# AeroThemePlasma
+# AeroThemePlasma: Windows 7 Fidelity
 
-## Independent Windows 7 taskbar fidelity fork (private preview)
+An independent fork of [AeroThemePlasma](https://github.com/aeroshell-desktop/aerothemeplasma),
+maintained by [SilverGlenn](https://github.com/SilverGlenn), focused on bringing
+Windows 7's taskbar behavior and Aero styling to KDE Plasma 6.
 
-This checkout's `windows7-fidelity` branch is an independent experimental fork,
-not an upstream contribution. It prioritizes directly observed Windows 7 taskbar
-spacing/activation, then Microsoft's Windows 7-era UX Guide for retained KDE
-functions. The Basic-graphics reference cannot establish Aero Glass or live
-thumbnail parity. Upstream credits, license and original documentation below are
-preserved; do not submit AI-assisted changes upstream.
+The original desktop theme, artwork, widgets, and native components come from
+**WackyIdeas and the AeroShell contributors**. This fork builds on their work
+with taskbar, system-tray, volume, power, and desktop-overview changes. Development
+takes place on the [`windows7-fidelity`](https://github.com/SilverGlenn/aerothemeplasma/tree/windows7-fidelity)
+branch.
 
-See [reference evidence](docs/windows7-taskbar-reference.md),
-[UX checks](docs/taskbar-uxguide-checklist.md), and
-[isolated tests / opt-in parallel preview staging](docs/taskbar-fidelity.md).
-Preview commands do not install onto or restart the live desktop. Use the dedicated
-staging utility, **not** the upstream root `install.sh`, to prepare this preview.
+## What this version changes
 
-To try the task-manager widget in a separate window without replacing your panel:
+- **SevenTasks:** corrected button geometry and activation, compact grouped-window
+  previews, bounded scrolling, keyboard access, and more predictable Peek behavior.
+  The panel template uses a full-width, non-floating Windows 7-style layout.
+- **System tray:** drag icons between the panel and hidden-icon drawer, reorder
+  either view, and retain placement across restarts. Dragging works between the
+  separate panel and drawer windows; the drawer grows as a square grid.
+- **Volume controls:** keep slider positions stable during asynchronous or stale
+  audio-device updates, synchronize mute state through fresh PulseAudio reads,
+  and handle KDE playback-volume shortcuts.
+- **Power flyout:** Windows 7-style battery status, power-plan labels and radio
+  buttons, plus links to screen brightness and power options.
+- **Desktop Number:** a tray-sized current-desktop number in Segoe UI Bold.
+  Clicking it opens KWin's existing Overview.
+- **Aero Overview:** Aero-style command buttons and search controls around KWin's
+  existing desktop and window previews.
+- **Preview tools:** a standalone taskbar window and a separate temporary panel
+  preview with an exit control and recovery support.
+
+The fidelity work follows observed Windows 7 behavior, then the Windows 7-era
+UX Guide, while retaining useful KDE functions. Desktop Number and Overview are
+Aero-style adaptations for Linux workspaces. The implementation and evidence
+are documented in the [taskbar reference](docs/windows7-taskbar-reference.md)
+and [UX checklist](docs/taskbar-uxguide-checklist.md).
+
+## Getting started
+
+Clone this fork's development branch:
+
+```bash
+git clone --branch windows7-fidelity https://github.com/SilverGlenn/aerothemeplasma.git aerothemeplasma-win7
+cd aerothemeplasma-win7
+```
+
+### Try the taskbar in a separate window
+
+From a terminal in an existing KDE Plasma desktop session:
 
 ```bash
 ./scripts/try-taskbar-preview.sh
 ```
 
-It uses the installed `plasmawindowed` host, keeps preview settings separate, and
-operates on real desktop windows. Close the preview window to stop. See the
-validation/staging document above for limitations and headless testing.
+The launcher builds and stages a separate SevenTasks package, then opens it with
+the installed `plasmawindowed` host. It keeps preview settings separate and leaves
+the existing panel in place. Its buttons operate on real desktop windows,
+including activation, minimize, and close. Close the preview window to stop it.
 
-## Desktop number tray widget
+Build and stage without opening a window with `--prepare-only`. See the
+[preview and validation guide](docs/taskbar-fidelity.md) for dependencies,
+headless checks, staging, and the separate temporary real-panel preview workflow.
 
-A minimal **Segoe UI Bold** current-desktop number, sized to the tray icons.
-Install and show only this widget (without replacing the theme or restarting Plasma):
+### Add Desktop Number
+
+Install and enable just the desktop-number widget in the current tray:
 
 ```bash
 ./scripts/install-desktop-number.sh --enable
 ```
 
-See [desktop-number setup and tests](docs/desktop-number.md). It is also available
-as **Desktop Number** in System Tray Settings after installation.
-
-## HIATUS NOTICE: This is a long overdue announcement, but development will slow down significantly as a result of real life priorities I have to take care of first. Estimated time until I continue development is unknown, but don't expect anything significant in the following few months, until August, probably. Thank you for your patience and support.
-
-## Microsoft® Windows™ is a registered trademark of Microsoft® Corporation. This name is used for referential use only, and does not aim to usurp copyrights from Microsoft. Microsoft Ⓒ 2025 All rights reserved. All resources belong to Microsoft Corporation.
-
-## Introduction
-
-This is a project which aims to recreate the look and feel of Windows 7 as much as possible on KDE Plasma, whilst adapting the design to fit in with modern features provided by KDE Plasma and Linux.
-
-ATP is in constant development and testing, it has been tested on:
-
-- Arch Linux x64 and other Arch derivatives
-- Plasma 6.7.4, KDE Frameworks 6.28.0, Qt 6.11.1
-- 96 DPI scaling, multi monitor
-- X11, Wayland*
-
-*AeroThemePlasma currently lacks full Wayland support, which may result in Wayland-specific issues. Proper Wayland support is planned for Plasma 6.8
-
-## This software comes "as is" without warranty of any kind. It's always recommended to make backups of your system just in case. I am not responsible for broken systems, please proceed with caution.
-
-The Plasma 5 version of ATP is available as a tag in this repository, however it is unmaintained and no longer supported.
-
-If you find my work valuable consider donating:
-
-<a href='https://ko-fi.com/M4M2NJ9PJ' target='_blank'><img height='42' style='border:0px;height:42px;' src='https://storage.ko-fi.com/cdn/kofi2.png?v=3' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
-
-[AeroThemePlasma](https://github.com/aeroshell-desktop/aerothemeplasma) and all of its AeroShell components are available as read-only [GitHub mirrors](https://github.com/aeroshell-desktop/).
-
-## Installation
-
-See [INSTALL.md](./INSTALL.md) for a detailed installation guide.
-
-## Credits 
-
-Huge thanks to everyone who helped out along the way by contributing, testing, providing suggestions and generally making ATP possible:
-
-### Forked code
-
-- Intika's [Digital Clock Lite](https://store.kde.org/p/1225135/) plasmoid
-- [Adhe](https://store.kde.org/p/1386465/), [oKcerG](https://github.com/oKcerG/QuickBehaviors) and [SnoutBug](https://store.kde.org/p/1720532) for making SevenStart possible
-- Zren's [Win7 Show Desktop](https://store.kde.org/p/2151247) plasmoid
-- [Mirko Gennari](https://store.kde.org/p/998614), DrGordBord and [bionegative](https://www.pling.com/p/998823) for making SevenBlack possible
-- DrGordBord's [Windows 7 Kvantum](https://store.kde.org/p/1679903) theme
-- [taj-ny](https://github.com/taj-ny)'s [kwin-effects-forceblur](https://github.com/taj-ny/kwin-effects-forceblur)
-
-### Contributors
-- [Souris-2d07](https://gitgud.io/souris) for making the following: 
-    - Cursor theme
-    - Plymouth theme (old)
-    - SDDM theme
-    - KWin decoration theme
-    - Most KWin C++ effects
-    - Other minor KWin features and scripts
-- [That Linux Dude Dominic Hayes](https://github.com/dominichayesferen) for making the following: 
-    - Lock screen UI 
-    - Icon theme
-- [catpswin56](https://gitgud.io/catpswin56/) for help with SevenTasks, Sound Mixer plasmoid, Gadgets menu, Polkit UAC skin, as well as many more contributions
-- [QuinceTart10](https://github.com/QuinceTart10) and [Gamer95875](https://github.com/Gamer95875) for making the sound themes
-- (In collaboration with) [kfh83](https://github.com/kfh83), [TorutheRedFox](https://github.com/TorutheRedFox) and [ALTaleX](https://github.com/ALTaleX531/dwm_colorization_calculator/blob/main/main.py) for figuring out accurate Aero glass blur and colorization effects
-- [AngelBruni](https://github.com/angelbruni) for contributing several SVG textures, most notably the clock in DigitalClockLite Seven
-- [ricewind012](https://github.com/ricewind012/) for .bashrc Microsoft Windows header
-- [furkrn](https://gitgud.io/furkrn) for creating and maintaining the [Plymouth theme](https://github.com/furkrn/PlymouthVista)
-- [IcyGuidance](https://gitgud.io/IcyGuidance) for designing the notification badges in SevenTasks
-
-### Special Thanks 
-
-- [MondySpartan](https://www.deviantart.com/mondyspartan/art/Windows-10-Year-2010-Edition-1016859431) for inspiring the notification design
-
-### Contributing 
-
-If you with to contribute in any way, please read [CONTRIBUTING](./CONTRIBUTING.md) for more details.
-
-### Cool projects you should really check out
-
-- [Geckium](https://github.com/angelbruni/Geckium) by AngelBruni
-- [Aero UserChrome](https://gitgud.io/souris/aero-userchrome) by Souris (Geckium in combination with Aero UserChrome works well with AeroThemePlasma)
-- [VistaThemePlasma](https://gitgud.io/aeroshell/vtp/vistathemeplasma/) by catpswin56
-- [LonghornThemePlasma](https://gitgud.io/catpswin56/longhornthemeplasma) by catpswin56
-- [VB1ThemePlasma](https://gitgud.io/catpswin56/vista-beta-plasma) by catpswin56
-- [Harmony](https://gitgud.io/catpswin56/harmony) by catpswin56
-- [SMOD Themes](https://gitgud.io/catpswin56/smod-themes) by catpswin56, a collection of themes that can be used with the SMOD window decoration theme
-- [X6Shell](https://gitgud.io/x6shell) by catpswin56
-- [Ice2K.sys](https://toiletflusher.neocities.org/ice2k/) by 0penrc
-- [AeroThemePlasma-Nix](https://github.com/nyakase/aerothemeplasma-nix/) by [nyakase](https://github.com/nyakase)
-
-## Vista variant
-
-Initially I wanted to make a Vista variant of AeroThemePlasma but [catpswin56](https://gitgud.io/catpswin56) beat me to it, use [VistaThemePlasma](https://gitgud.io/aeroshell/vtp/vistathemeplasma) if you want a Vista theme.
-
-## Aero apps for AeroThemePlasma
-To install most of these, the commands to run after cloning are: `mkdir build; cd build; cmake .. -DCMAKE_INSTALL_PREFIX=/usr; sudo make install`.
-
-### Complete re-creations
-- [Linux Explorer](https://github.com/actuallyaridan/linux-explorer) by ActuallyAridan
-- [Control Panel](https://github.com/actuallyaridan/linux-control) by ActuallyAridan
-- [Device Manager](https://github.com/actuallyaridan/linux-devmgmt) by ActuallyAridan
-- [Windows 7 Minesweeper](https://github.com/actuallyaridan/linux-minesweeper) by ActuallyAridan
-- [TuxManager](https://github.com/benapetr/TuxManager) (task manager) by benapetr
-- [Gadgets](https://gitgud.io/catpswin56/win-gadgets) by catpswin56
-- [execbin](https://gitgud.io/catpswin56/execbin) (run dialog) by catpswin56
-- [LinVer](https://gitgud.io/wackyideas/linver) (version dialog)
-
-### KDE app forks
-- [Aero Dolphin](https://gitgud.io/atmk/dolphin-aero) by Albert Tomanek
-- [Aero GwenView](https://gitgud.io/atmk/gwenview-aero) by Albert Tomanek
-- [Aero KolourPaint](https://invent.kde.org/albert-tomanek/kolourpaint/-/tree/saribbon-aero) by Albert Tomanek
-
-### Other Aero Apps
-- [Aero App Store](https://gitgud.io/atmk/app-store/-/tree/flatpak?ref_type=heads) by Albert Tomanek
-
-### Development Libraries
-- [libAeroQt](https://gitgud.io/atmk/libaero-qt) -- Re-usable QtWidgets and QML components for writing Aero apps. Also contains function to make glassy window headers.
-- [SARibbon](https://github.com/czyt1988/SARibbon) -- Ribbon control for Qt. Gets styled by libAeroQt.
-
-## Screenshots
-
-### Desktop
-
-![desktop](screenshots/desktop.png)
-
-### Start Menu
-
-![start_menu](screenshots/start_menu.png)
-![start_menu_search](screenshots/start_menu_search.png)
-![start_menu_apps](screenshots/start_menu_apps.png)
-![start_menu_openshell](screenshots/start_menu_openshell.png)
-
-### Clock
-
-![clock](screenshots/clock.png)
-
-### System Tray
-
-![battery](screenshots/battery.png)
-![systray](screenshots/system_tray.png)
-
-### Sound Mixer 
-
-![mixer](screenshots/mixer.png)
-![mixer_expanded](screenshots/mixer_expanded.png)
-
-### Notifications 
-
-![notification](screenshots/notification.png)
-![notification-progress](screenshots/notification-progress.png)
-
-### Desktop Icons 
-
-![desktop-icons](screenshots/icons.png)
-
-### Lockscreen 
-
-![lockscreen](screenshots/lockscreen.png)
-
-### Aero Peek
-
-![aero-peek](screenshots/peek.png)
-
-### Alt-Tab Switcher
-
-![alt-tab](screenshots/alt-tab.png)
-
-### Colorization 
-
-![colorization](screenshots/colorization.png)
-Regular colorization:
-![regular-colorization](screenshots/aeroblur.png)
-Basic colorization:
-![basic-colorization](screenshots/aeroblursimple.png)
-Maximized opaque colorization:
-![maximized-colorization](screenshots/aeroblur_opaque.png)
-
-### Decorations
-
-![decorations](screenshots/decorations.png)
-
-Decoration themes:
-
-![decoration-themes](screenshots/smod_theme.png)
-
-### Gadgets 
-
-![gadgets](screenshots/gadgets.png)
-
-### Network details
-
-![network-details](screenshots/network-details.png)
-
-### Librewolf
-
-![librewolf](screenshots/geckium.png)
-
-### User Account Control (Polkit)
-
-![uac](screenshots/uac.png)
-![uac-trusted](screenshots/uac-trusted.png)
-
-### Taskbar
-
-![taskbar](screenshots/jumplist.png)
-![taskbar_tooltips](screenshots/seventasks_media.png)
-![taskbar_inactive](screenshots/seventasks_inactive.png)
-![taskbar_compact](screenshots/seventasks_compact.png)
+It is also listed as **Desktop Number** in System Tray Settings after
+installation. Segoe UI Bold must be supplied separately; Qt uses a fallback
+when it is unavailable. See [setup, removal, and tests](docs/desktop-number.md).
+
+### Apply the Aero Overview skin
+
+The overview extension currently requires **KWin 6.6.6** and matching development
+headers. It checks the build-time and running versions before applying the skin.
+
+```bash
+cd plasma/effects/aero-overview
+./install.sh
+```
+
+Run `./uninstall.sh` from the same directory to restore the stock Overview.
+See the [overview guide](plasma/effects/aero-overview/README.md) for requirements,
+scope, and validation.
+
+The volume, power, and system-tray changes are included in their widget sources;
+they do not yet have a dedicated installation helper. The retained
+[upstream installation guide](INSTALL.md) describes the full AeroThemePlasma
+setup. Use the component-specific paths above for this fork's additions and the
+dedicated staging tools for previews.
+
+## Compatibility and validation
+
+The fork's recorded validation environment is **x86_64, Plasma/KWin 6.6.6,
+KDE Frameworks 6.24, and Qt 6.10.2**. This is the environment used for the fork's
+checks, rather than a guarantee for every Plasma 6 release. The Overview native
+extension is explicitly pinned to KWin 6.6.6 and needs review and rebuilding for
+another release.
+
+Taskbar component tests cover 100%, 125%, and 150% scaling. Desktop-number,
+volume, power, and overview controls have QML regressions; the tray tests exercise
+native cross-window drags and persisted configuration. Tray placement has also
+been checked in a live Wayland session across a Plasma restart.
+
+The recorded Windows reference uses Basic graphics. Exact Aero Glass,
+live-thumbnail, shadow, and Peek parity remains unverified, and a windowed
+taskbar preview does not validate every full-panel interaction. See the
+[validation guide](docs/taskbar-fidelity.md) and
+[tray regression notes](tests/systemtray/README.md) for the tested scope and
+remaining checks.
+
+## Development
+
+Development for this version takes place in
+[SilverGlenn/aerothemeplasma](https://github.com/SilverGlenn/aerothemeplasma).
+When describing a fork-specific problem, include reproduction steps,
+Plasma/Qt/KWin versions, session type, scaling, and relevant logs.
+
+The original [contribution policy](CONTRIBUTING.md),
+[translation guide](TRANSLATING.md), and [technical documentation](DOCUMENTATION.md)
+are retained. The contribution policy governs submissions to the upstream
+AeroShell project; this fork is maintained separately.
+
+## Upstream credit and acknowledgments
+
+**AeroThemePlasma was created by [WackyIdeas](https://gitgud.io/wackyideas) and
+developed with the AeroShell community.** Their work provides the foundation of
+this fork. The original [GitGud project](https://gitgud.io/aeroshell/atp/aerothemeplasma),
+[GitHub mirror](https://github.com/aeroshell-desktop/aerothemeplasma), and
+[AeroShell components](https://github.com/aeroshell-desktop/) remain credited.
+You can support the original project's author through
+[Ko-fi](https://ko-fi.com/M4M2NJ9PJ).
+
+The acknowledgments below preserve the original project's contributor and
+related-project mentions. KDE contributors are also credited for Plasma, KWin,
+Kirigami, and the original Overview implementation; their source notices remain
+in the relevant files.
+
+### Code and themes used by upstream
+
+- Intika's [Digital Clock Lite](https://store.kde.org/p/1225135/) plasmoid.
+- [Adhe](https://store.kde.org/p/1386465/), [oKcerG](https://github.com/oKcerG/QuickBehaviors),
+  and [SnoutBug](https://store.kde.org/p/1720532) for making SevenStart possible.
+- Zren's [Win7 Show Desktop](https://store.kde.org/p/2151247) plasmoid.
+- [Mirko Gennari](https://store.kde.org/p/998614), DrGordBord, and
+  [bionegative](https://www.pling.com/p/998823) for making SevenBlack possible.
+- DrGordBord's [Windows 7 Kvantum](https://store.kde.org/p/1679903) theme.
+- [taj-ny](https://github.com/taj-ny)'s
+  [kwin-effects-forceblur](https://github.com/taj-ny/kwin-effects-forceblur).
+
+### Upstream contributors
+
+- [Souris-2d07](https://gitgud.io/souris): cursor theme, original Plymouth theme,
+  SDDM theme, KWin decoration theme, most KWin C++ effects, and other KWin features
+  and scripts.
+- [That Linux Dude Dominic Hayes](https://github.com/dominichayesferen): lock
+  screen UI and icon theme.
+- [catpswin56](https://gitgud.io/catpswin56/): SevenTasks, Sound Mixer, Gadgets
+  menu, Polkit UAC skin, and many other contributions.
+- [QuinceTart10](https://github.com/QuinceTart10) and
+  [Gamer95875](https://github.com/Gamer95875): sound themes.
+- [kfh83](https://github.com/kfh83),
+  [TorutheRedFox](https://github.com/TorutheRedFox), and
+  [ALTaleX](https://github.com/ALTaleX531/dwm_colorization_calculator/blob/main/main.py):
+  collaboration on accurate Aero glass blur and colorization.
+- [AngelBruni](https://github.com/angelbruni): SVG textures, especially the
+  DigitalClockLite Seven clock.
+- [ricewind012](https://github.com/ricewind012/): the .bashrc Microsoft Windows header.
+- [furkrn](https://gitgud.io/furkrn): creation and maintenance of the
+  [Plymouth theme](https://github.com/furkrn/PlymouthVista).
+- [IcyGuidance](https://gitgud.io/IcyGuidance): SevenTasks notification badges.
+
+Special thanks to [MondySpartan](https://www.deviantart.com/mondyspartan/art/Windows-10-Year-2010-Edition-1016859431)
+for inspiring the notification design, and to everyone who contributed, tested,
+or provided suggestions to the original project.
+
+### Related projects acknowledged by upstream
+
+- [Geckium](https://github.com/angelbruni/Geckium) by AngelBruni.
+- [Aero UserChrome](https://gitgud.io/souris/aero-userchrome) by Souris.
+- [VistaThemePlasma](https://gitgud.io/aeroshell/vtp/vistathemeplasma/),
+  [LonghornThemePlasma](https://gitgud.io/catpswin56/longhornthemeplasma),
+  [VB1ThemePlasma](https://gitgud.io/catpswin56/vista-beta-plasma),
+  [Harmony](https://gitgud.io/catpswin56/harmony),
+  [SMOD Themes](https://gitgud.io/catpswin56/smod-themes), and
+  [X6Shell](https://gitgud.io/x6shell) by catpswin56.
+- [Ice2K.sys](https://toiletflusher.neocities.org/ice2k/) by 0penrc.
+- [AeroThemePlasma-Nix](https://github.com/nyakase/aerothemeplasma-nix/) by
+  [nyakase](https://github.com/nyakase).
+- [Linux Explorer](https://github.com/actuallyaridan/linux-explorer),
+  [Control Panel](https://github.com/actuallyaridan/linux-control),
+  [Device Manager](https://github.com/actuallyaridan/linux-devmgmt), and
+  [Windows 7 Minesweeper](https://github.com/actuallyaridan/linux-minesweeper)
+  by ActuallyAridan.
+- [TuxManager](https://github.com/benapetr/TuxManager) by benapetr.
+- [Gadgets](https://gitgud.io/catpswin56/win-gadgets) and
+  [execbin](https://gitgud.io/catpswin56/execbin) by catpswin56.
+- [LinVer](https://gitgud.io/wackyideas/linver) by WackyIdeas.
+- [Aero Dolphin](https://gitgud.io/atmk/dolphin-aero),
+  [Aero GwenView](https://gitgud.io/atmk/gwenview-aero),
+  [Aero KolourPaint](https://invent.kde.org/albert-tomanek/kolourpaint/-/tree/saribbon-aero),
+  [Aero App Store](https://gitgud.io/atmk/app-store/-/tree/flatpak?ref_type=heads),
+  and [libAeroQt](https://gitgud.io/atmk/libaero-qt) by Albert Tomanek.
+- [SARibbon](https://github.com/czyt1988/SARibbon), the ribbon-control library
+  styled by libAeroQt.
+
+## License and trademarks
+
+See [LICENSE](LICENSE) for the repository's GNU Affero General Public License
+version 3. Individual components retain their own license and copyright notices,
+including the GPL-2.0-or-later KWin Overview sources.
+
+Microsoft® Windows™ is a registered trademark of Microsoft Corporation.
+Microsoft retains ownership of its Windows resources. Windows names are used
+for reference to the visual style; this project is independent of Microsoft.
