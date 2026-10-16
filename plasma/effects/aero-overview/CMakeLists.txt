@@ -1,0 +1,11 @@
+cmake_minimum_required(VERSION 3.24)
+project(AeroOverview VERSION 1.0 LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_AUTOMOC ON)
+find_package(Qt6 REQUIRED COMPONENTS Core Qml Quick Widgets DBus)
+# KWin's C++ API is not ABI-stable. Never build against a different release.
+find_package(KWin 6.6.6 EXACT REQUIRED)
+add_library(aerooverviewplugin MODULE native/overviewplugin.cpp)
+target_link_libraries(aerooverviewplugin PRIVATE KWin::kwin Qt6::Qml)
+target_compile_definitions(aerooverviewplugin PRIVATE AERO_KWIN_VERSION="6.6.6")
+set_target_properties(aerooverviewplugin PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/native")

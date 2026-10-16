@@ -1,0 +1,12 @@
+{
+    "KPlugin": {
+        "Id": "aerooverview",
+        "Name": "Aero desktop overview",
+        "Description": "Windows 7-style controls for the built-in desktop overview",
+        "Version": "1.0",
+        "License": "GPL-2.0-or-later",
+        "EnabledByDefault": false
+    },
+    "X-Plasma-API": "declarativescript",
+    "KPackageStructure": "KWin/Script"
+}
