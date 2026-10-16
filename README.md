@@ -126,6 +126,12 @@ The original [contribution policy](CONTRIBUTING.md),
 are retained. The contribution policy governs submissions to the upstream
 AeroShell project; this fork is maintained separately.
 
+## Fork contributors
+
+- [Glenn Silver (SilverGlenn)](https://github.com/SilverGlenn): maintenance and
+  development of this fork's Windows 7 taskbar fidelity, system-tray, volume,
+  power, Desktop Number, and Aero Overview changes.
+
 ## Upstream credit and acknowledgments
 
 **AeroThemePlasma was created by [WackyIdeas](https://gitgud.io/wackyideas) and
