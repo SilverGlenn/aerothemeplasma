@@ -8,6 +8,7 @@
 
 import QtQuick 2.15
 import QtQuick.Layouts 1.1
+import QtQml.Models
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components 3.0 as PlasmaComponents3
 import org.kde.plasma.plasmoid 2.0
@@ -22,19 +23,18 @@ ScrollView {
     property alias hiddenItemsCount: hiddenTasks.count
     property alias cellWidth: hiddenTasks.cellWidth
     property alias cellHeight: hiddenTasks.cellHeight
-    //property int hiddenTasksWidth: 3 * hiddenTasks.cellWidth + Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing / 2 - 1 + hiddenTasksView.padding*2
-    //property int hiddenTasksHeight: Math.ceil(hiddenTasks.count / 3) * (hiddenTasks.cellHeight + Kirigami.Units.smallSpacing) + 40 + Kirigami.Units.largeSpacing*2 + hiddenTasksView.padding*2
     property alias layout: hiddenTasks
 
-    property int flyoutHeight: Math.ceil(hiddenTasks.count / 3) * (hiddenTasks.cellHeight + Kirigami.Units.smallSpacing) + Kirigami.Units.smallSpacing*2
+    // Reserve a square icon area, growing both dimensions at 10, 17, 26, ...
+    readonly property int gridSize: Math.max(3, Math.ceil(Math.sqrt(hiddenItemsCount)))
 
-    width: (hiddenTasks.cellWidth+Kirigami.Units.smallSpacing) * 3 - Kirigami.Units.smallSpacing/2 - 1
+    width: gridSize * hiddenTasks.cellWidth + leftPadding + rightPadding
 
-    //topPadding: 0
     padding: Kirigami.Units.mediumSpacing
-    leftPadding: Kirigami.Units.smallSpacing
-    bottomPadding: Kirigami.Units.mediumSpacing + Kirigami.Units.smallSpacing
-    rightPadding: 0
+    implicitHeight: gridSize * hiddenTasks.cellHeight + topPadding + bottomPadding
+    leftPadding: padding
+    rightPadding: padding
+    bottomPadding: padding
     hoverEnabled: true
     onHoveredChanged: if (!hovered) {
 
@@ -45,12 +45,8 @@ ScrollView {
     GridView {
         id: hiddenTasks
 
-        readonly property int maximumColumns: 3
-        readonly property int minimumRows: 4
-        readonly property int minimumColumns: 4
-
-        cellWidth: Kirigami.Units.iconSizes.medium //Math.floor(Math.min(hiddenTasksView.availableWidth, popup.Layout.minimumWidth) / minimumRows)
-        cellHeight: Kirigami.Units.iconSizes.medium //Math.floor(popup.Layout.minimumHeight / minimumColumns)
+        cellWidth: Kirigami.Units.iconSizes.medium
+        cellHeight: Kirigami.Units.iconSizes.medium
 
         currentIndex: -1
         //highlight: PlasmaExtras.Highlight {}
@@ -61,28 +57,33 @@ ScrollView {
         readonly property int itemCount: model.count
 
 
-        model: KItemModels.KSortFilterProxyModel {
-            sourceModel: Plasmoid.systemTrayModel
-            filterRoleName: "effectiveStatus"
-            filterRowCallback: (sourceRow, sourceParent) => {
-                let value = sourceModel.data(sourceModel.index(sourceRow, 0, sourceParent), filterRole);
-                return value === PlasmaCore.Types.PassiveStatus
+        model: OrderedTrayModel {
+            ordering: root.orderingManager
+            model: KItemModels.KSortFilterProxyModel {
+                sourceModel: Plasmoid.systemTrayModel
+                filterRoleName: "effectiveStatus"
+                filterRowCallback: (sourceRow, sourceParent) => {
+                    let value = sourceModel.data(sourceModel.index(sourceRow, 0, sourceParent), filterRole);
+                    return value === PlasmaCore.Types.PassiveStatus
+                }
             }
-        }
-        delegate: ItemLoader {
-            id: itemloader
-            GridView.onRemove: {
-                removeAnim.start();
-            }
-            //GridView.delayRemove: true
-            width: hiddenTasks.cellWidth
-            height: hiddenTasks.cellHeight
-            minLabelHeight: 0//hiddenTasks.minLabelHeight
-            SequentialAnimation {
-                id: removeAnim
-                PropertyAction { target: itemloader; property: "GridView.delayRemove"; value: true }
-                NumberAnimation { target: itemloader; property: "opacity"; to: 0; duration: 25; easing.type: Easing.InOutQuad }
-                PropertyAction { target: itemloader; property: "GridView.delayRemove"; value: false }
+            delegate: ItemLoader {
+                id: itemloader
+                property int visualIndex: DelegateModel.itemsIndex
+                visible: !DelegateModel.isUnresolved
+                GridView.onRemove: {
+                    removeAnim.start();
+                }
+                //GridView.delayRemove: true
+                width: hiddenTasks.cellWidth
+                height: hiddenTasks.cellHeight
+                minLabelHeight: 0//hiddenTasks.minLabelHeight
+                SequentialAnimation {
+                    id: removeAnim
+                    PropertyAction { target: itemloader; property: "GridView.delayRemove"; value: true }
+                    NumberAnimation { target: itemloader; property: "opacity"; to: 0; duration: 25; easing.type: Easing.InOutQuad }
+                    PropertyAction { target: itemloader; property: "GridView.delayRemove"; value: false }
+                }
             }
         }
 

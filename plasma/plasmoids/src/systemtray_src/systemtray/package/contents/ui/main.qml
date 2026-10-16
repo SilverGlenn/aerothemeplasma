@@ -36,6 +36,37 @@ ContainmentItem {
     readonly property alias visibleLayout: tasksGrid
     readonly property alias hiddenLayout: expandedRepresentation.hiddenLayout
     readonly property bool oneRowOrColumn: tasksGrid.rowsOrColumns === 1
+    readonly property alias dragController: dragController
+    readonly property alias orderingManager: orderingManager
+    readonly property var hiddenModel: expandedRepresentation.hiddenLayout.model
+
+    TrayOrdering {
+        id: orderingManager
+        configuration: Plasmoid.configuration
+    }
+
+    TrayDragController {
+        id: dragController
+        configuration: Plasmoid.configuration
+        onReorderRequested: (itemId, hidden, targetItemId) => {
+            if (hidden) {
+                dragController.visibleItemIds = orderingManager.itemIds(activeModel);
+            }
+            orderingManager.move(hidden ? root.hiddenModel : activeModel, itemId, targetItemId);
+        }
+        onFinished: {
+            if (root.hiddenLayout.itemCount === 0 && !systemTrayState.activeApplet) {
+                systemTrayState.expanded = false;
+            }
+        }
+    }
+
+    // Covers the panel's empty space as well as the icon grid. Individual
+    // delegates accept drops first when a particular position is targeted.
+    TrayDropArea {
+        anchors.fill: parent
+        controller: dragController
+    }
 
     KSvg.Svg {
         id: buttonIcons
@@ -109,56 +140,9 @@ ContainmentItem {
             }
         }
 
-        Item {
-            id: orderingManager
-            property var orderObject: {}
-
-            function saveConfiguration() {
-                for(var i = 0; i < activeModel.items.count; i++) {
-                    var item = activeModel.items.get(i);
-                    if(item.model.itemId !== "")
-                        setItemOrder(item.model.itemId, item.itemsIndex, false);
-                }
-                writeToConfig();
-            }
-            function setItemOrder(id, index, write = true) {
-                if(typeof orderObject === "undefined")
-                    orderObject = {};
-                orderObject[id] = index;
-                if(write) writeToConfig();
-            }
-            function getItemOrder(id) {
-                if(typeof orderObject[id] === "undefined") return -1;
-                return orderObject[id];
-            }
-            function writeToConfig() {
-                Plasmoid.configuration.itemOrdering = JSON.stringify(orderObject);
-                Plasmoid.configuration.writeConfig();
-            }
-
-            Component.onCompleted: {
-                var list = Plasmoid.configuration.itemOrdering;
-                if(list !== "")
-                    orderObject = JSON.parse(list);
-
-                if(typeof orderObject === "undefined")
-                    orderObject = {};
-            }
-            /*Component.onDestruction: {
-                saveConfiguration();
-            }*/
-        }
-        Timer {
-            id: updateTimer
-            interval: 100
-            onTriggered: {
-                root.hiddenLayout.model.invalidateFilter()
-                shownItemsModel.invalidateFilter();
-            }
-        }
-
-        DelegateModel {
+        OrderedTrayModel {
             id: activeModel
+            ordering: orderingManager
             model: KItemModels.KSortFilterProxyModel {
                 id: shownItemsModel
                 sourceModel: Plasmoid.systemTrayModel
@@ -167,54 +151,6 @@ ContainmentItem {
                 filterRowCallback: (sourceRow, sourceParent) => {
                     let value = sourceModel.data(sourceModel.index(sourceRow, 0, sourceParent), filterRole);
                     return value === PlasmaCore.Types.ActiveStatus;
-                }
-            }
-            property int unsortedCount: unsortedItems.count;
-            property int sortedCount: items.count;
-            function determinePosition(item) {
-                let lower = 0;
-                let upper = items.count
-                while(lower < upper) {
-                    const middle = Math.floor(lower + (upper - lower) / 2)
-                    var middleItem = items.get(middle);
-
-                    var first = orderingManager.getItemOrder(item.model.itemId);
-                    var second = orderingManager.getItemOrder(middleItem.model.itemId);
-
-                    const result = first < second;
-                    if(result) {
-                        upper = middle;
-                    } else {
-                        lower = middle + 1;
-                    }
-                }
-                return lower;
-            }
-            function sort() {
-                while(unsortedItems.count > 0) {
-                    const item = unsortedItems.get(0);
-                    //var shouldInsert = item.model.itemId !== "" || (typeof item.model.hasApplet !== "undefined");
-                    var i = determinePosition(item); //orderingManager.getItemOrder(item.model.itemId);
-                    item.groups =  "items";
-                    items.move(item.itemsIndex, i);
-                }
-            }
-            items.includeByDefault: false
-            groups: DelegateModelGroup {
-                id: unsortedItems
-                name: "unsorted"
-
-                includeByDefault: true
-                onChanged: (removed, inserted) => {
-                    /*if(inserted.length > 0) {
-                        root.hiddenLayout.model.invalidateFilter()
-                        shownItemsModel.invalidateFilter();
-                    }*/
-                    activeModel.sort();
-                    if(activeModel.count != shownItemsModel.count) {
-                        root.hiddenLayout.model.invalidateFilter()
-                        shownItemsModel.invalidateFilter();
-                    }
                 }
             }
             delegate: ItemLoader {
@@ -256,7 +192,7 @@ ContainmentItem {
                 Layout.alignment: vertical ? Qt.AlignVCenter : Qt.AlignHCenter
                 Layout.topMargin: !vertical ? 1 : 0
                 iconSize: tasksGrid.itemSize
-                visible: root.hiddenLayout.itemCount > 0
+                visible: root.hiddenLayout.itemCount > 0 || dragController.active
             }
             GridView {
                 id: tasksGrid
@@ -333,7 +269,7 @@ ContainmentItem {
             property int flyoutMargin: Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing/2
             property bool firstTimePopup: false
 
-            hideOnWindowDeactivate: !Plasmoid.configuration.pin
+            hideOnWindowDeactivate: !Plasmoid.configuration.pin && !dragController.active
             visible: systemTrayState.expanded
             appletInterface: root
 

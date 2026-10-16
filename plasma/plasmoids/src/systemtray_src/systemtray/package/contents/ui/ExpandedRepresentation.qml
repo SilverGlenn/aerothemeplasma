@@ -47,6 +47,13 @@ Item {
     property alias hiddenLayout: hiddenItemsView.layout
     property alias plasmoidContainer: container
 
+    TrayDropArea {
+        anchors.fill: parent
+        controller: root.dragController
+        hidden: true
+        enabled: hiddenItemsView.visible
+    }
+
     Kirigami.Theme.colorSet: Kirigami.Theme.View
     Kirigami.Theme.inherit: false
 
@@ -92,7 +99,7 @@ Item {
             Layout.preferredWidth: hiddenItemsView.width
 
             onHiddenItemsCountChanged: {
-                if(visible && hiddenItemsCount == 0) {
+                if(visible && hiddenItemsCount == 0 && !root.dragController.active) {
                     systemTrayState.expanded = false;
                     layout.currentIndex = -1;
                 }

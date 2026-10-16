@@ -42,6 +42,30 @@ PlasmaCore.ToolTipArea {
 
     property bool wasExpanded
 
+    TrayDropArea {
+        id: drawerDropArea
+        anchors.fill: parent
+        controller: root.dragController
+        hidden: true
+        onContainsDragChanged: {
+            if (containsDrag) {
+                drawerOpenTimer.restart();
+                tooltip.hideImmediately();
+            } else {
+                drawerOpenTimer.stop();
+            }
+        }
+    }
+
+    Timer {
+        id: drawerOpenTimer
+        interval: 400
+        onTriggered: {
+            systemTrayState.setActiveApplet(null);
+            systemTrayState.expanded = true;
+        }
+    }
+
     property bool flyoutExpanded: systemTrayState.expanded
     onFlyoutExpandedChanged: {
         if(flyoutExpanded) {

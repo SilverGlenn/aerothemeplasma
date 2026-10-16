@@ -13,6 +13,7 @@ import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components 3.0 as PlasmaComponents3
 import org.kde.kirigami 2.20 as Kirigami
 import org.kde.ksvg 1.0 as KSvg
+import ".."
 
 PlasmaCore.ToolTipArea {
     id: abstractItem
@@ -30,7 +31,8 @@ PlasmaCore.ToolTipArea {
     property real minLabelHeight: 0
     readonly property bool inHiddenLayout: effectiveStatus === PlasmaCore.Types.PassiveStatus
     readonly property bool inVisibleLayout: effectiveStatus === PlasmaCore.Types.ActiveStatus
-    property alias held: mouseArea.held
+    readonly property bool held: trayDrag.held
+    onHeldChanged: mouseArea.setRequestedInhibitDnd(held)
 
     // input agnostic way to trigger the main action
     signal activated(var pos)
@@ -113,22 +115,20 @@ PlasmaCore.ToolTipArea {
     MouseArea {
         id: mouseArea
         propagateComposedEvents: true
-        property bool held: false
 
         function setRequestedInhibitDnd(value) {
             // This is modifying the value in the panel containment that
             // inhibits accepting drag and drop, so that we don't accidentally
             // drop the task on this panel.
-            let item = this;
-            while (item.parent) {
-                item = item.parent;
+            // Hidden delegates live in a different window, so walk from the
+            // tray root to reach the panel for drags originating in the drawer.
+            let item = root;
+            while (item) {
                 if (item.appletRequestsInhibitDnD !== undefined) {
                     item.appletRequestsInhibitDnD = value
                 }
+                item = item.parent;
             }
-        }
-        onHeldChanged: {
-            setRequestedInhibitDnd(held);
         }
         // This needs to be above applets when it's in the grid hidden area
         // so that it can receive hover events while the mouse is over an applet,
@@ -137,8 +137,6 @@ PlasmaCore.ToolTipArea {
         z: 1
         anchors.fill: abstractItem
         hoverEnabled: true
-        drag.filterChildren: true
-        drag.target: held && !abstractItem.inHiddenLayout ? icon : null
         // Necessary to make the whole delegate area forward all mouse events
         acceptedButtons: Qt.AllButtons
         // Using onPositionChanged instead of onEntered because changing the
@@ -153,22 +151,19 @@ PlasmaCore.ToolTipArea {
         }
         onPositionChanged: {
             if (abstractItem.inHiddenLayout) {
-                root.hiddenLayout.currentIndex = index
-            } else {
-                if(mouseArea.containsPress) {
-                    held = true;
-                }
+                root.hiddenLayout.currentIndex = abstractItem.parent.visualIndex
             }
 
         }
-        onClicked: mouse => { abstractItem.clicked(mouse) }
-        onReleased: {
-            icon.Drag.drop();
-            held = false;
+        onClicked: mouse => {
+            if (!trayDrag.suppressClick) {
+                abstractItem.clicked(mouse);
+            }
         }
         onPressed: mouse => {
+            trayDrag.suppressClick = false;
             if (inHiddenLayout) {
-                root.hiddenLayout.currentIndex = index
+                root.hiddenLayout.currentIndex = abstractItem.parent.visualIndex
             }
             abstractItem.hideImmediately()
             abstractItem.pressed(mouse)
@@ -188,37 +183,23 @@ PlasmaCore.ToolTipArea {
         }
     }
 
+    TrayDragHandler {
+        id: trayDrag
+        parent: mouseArea
+        anchors.fill: parent
+        z: 2
+        controller: root.dragController
+        imageItem: iconContainer
+        // Use the model's stable configuration ID (some SNI IDs are normalized).
+        itemId: abstractItem.model.itemId
+        hidden: abstractItem.inHiddenLayout
+    }
+
     ColumnLayout {
         id: icon
         anchors.fill: abstractItem
         anchors.topMargin: abstractItem.inHiddenLayout ? 0 : 1
         spacing: 0
-
-        Drag.active: mouseArea.drag.active// && abstractItem.inHiddenLayout
-        Drag.source: abstractItem.parent
-        Drag.hotSpot: Qt.point(width/2, height/2)
-
-        states: [
-            State {
-                when: icon.Drag.active
-
-                ParentChange {
-                    target: icon
-                    parent: root.tasksGrid
-                }
-
-                PropertyChanges {
-                    target: icon
-                    x: mouseArea.mapToItem(root.tasksGrid, mouseArea.mouseX, mouseArea.mouseY).x - iconContainer.width * 0.75
-                    y: mouseArea.mapToItem(root.tasksGrid, mouseArea.mouseX, mouseArea.mouseY).y - iconContainer.height / 2
-                }
-                /*AnchorChanges {
-                    target: icon
-                    anchors.horizontalCenter: undefined
-                    anchors.verticalCenter: undefined
-                }*/
-            }
-        ]
 
         FocusScope {
             id: iconContainer
@@ -230,7 +211,7 @@ PlasmaCore.ToolTipArea {
             Accessible.description: abstractItem.subText
             Accessible.role: Accessible.Button
             Accessible.onPressAction: abstractItem.activated(Plasmoid.popupPosition(iconContainer, iconContainer.width/2, iconContainer.height/2));
-            opacity: icon.Drag.active ? 0.5 : 1
+            opacity: abstractItem.held ? 0.5 : 1
             Keys.onPressed: event => {
                 switch (event.key) {
                     case Qt.Key_Space:
@@ -250,8 +231,8 @@ PlasmaCore.ToolTipArea {
             property alias inVisibleLayout: abstractItem.inVisibleLayout
             readonly property int size: abstractItem.inVisibleLayout ? root.itemSize : Kirigami.Units.iconSizes.small
 
-            Layout.alignment: Qt.Bottom | Qt.AlignHCenter
-            Layout.fillHeight: abstractItem.inHiddenLayout ? true : false
+            Layout.alignment: abstractItem.inHiddenLayout ? Qt.AlignCenter : Qt.Bottom | Qt.AlignHCenter
+            Layout.fillHeight: false
             implicitWidth: root.vertical && abstractItem.inVisibleLayout ? abstractItem.width : size
             implicitHeight: !root.vertical && abstractItem.inVisibleLayout ? abstractItem.height : size
             //Layout.topMargin: abstractItem.inHiddenLayout ? Kirigami.Units.mediumSpacing : 0
@@ -286,59 +267,47 @@ PlasmaCore.ToolTipArea {
             }
         }
     }
-    DropArea {
+    TrayDropArea {
         id: dropArea
         anchors.fill: parent
         anchors.margins: 0
-        property bool hasDrag: false
+        controller: root.dragController
+        hidden: abstractItem.inHiddenLayout
+        targetItemId: abstractItem.model.itemId
+        readonly property bool sameLayout: controller.fromHidden === hidden
+        readonly property int sourceIndex: {
+            const model = hidden ? root.hiddenModel : root.activeModel;
+            for (let i = 0; i < model.items.count; ++i) {
+                if (model.items.get(i).model.itemId === controller.itemId) return i;
+            }
+            return -1;
+        }
         Rectangle {
             id: leftBar
-            color: "#70ffffff"
+            color: abstractItem.inHiddenLayout ? "#0066cc" : "#70ffffff"
             width: 1
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             anchors.topMargin: Kirigami.Units.smallSpacing/2
             anchors.bottomMargin: Kirigami.Units.smallSpacing/2
-            visible: false
+            visible: dropArea.containsDrag
+                     && dropArea.controller.itemId !== dropArea.targetItemId
+                     && !rightBar.visible
             z: -1
         }
         Rectangle {
             id: rightBar
-            color: "#70ffffff"
+            color: abstractItem.inHiddenLayout ? "#0066cc" : "#70ffffff"
             width: 1
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             anchors.topMargin: Kirigami.Units.smallSpacing/2
             anchors.bottomMargin: Kirigami.Units.smallSpacing/2
-            visible: false
+            visible: dropArea.containsDrag && dropArea.sameLayout
+                     && dropArea.sourceIndex >= 0 && dropArea.sourceIndex < abstractItem.parent.visualIndex
             z: -1
-        }
-        onEntered: drag => {
-
-            if(drag.source.visualIndex < abstractItem.parent.visualIndex) {
-                rightBar.visible = true;
-                leftBar.visible = false;
-            } else {
-                rightBar.visible = false;
-                leftBar.visible = true;
-            }
-            hasDrag = true;
-        }
-        onExited: drag => {
-            hasDrag = false;
-            rightBar.visible = false;
-            leftBar.visible = false;
-        }
-        onDropped: drag => {
-            root.activeModel.items.move(drag.source.visualIndex, abstractItem.parent.visualIndex);
-            //orderingManager.setItemOrder(itemId, abstractItem.parent.visualIndex);
-            //orderingManager.setItemOrder(drag.source.itemId, drag.source.visualIndex);
-            hasDrag = false;
-            rightBar.visible = false;
-            leftBar.visible = false;
-            orderingManager.saveConfiguration();
         }
     }
 }
