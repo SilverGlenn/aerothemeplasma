@@ -26,6 +26,10 @@ Item {
     property string type
     property bool isStream: false
     property bool isInWindow: false
+    readonly property string muteTargetKind: isStream
+        ? (type === "source-output" ? "sink-input" : "source-output")
+        : (type === "sink-output" ? "sink" : "source")
+    readonly property var muteState: main.muteControllerFor(model.PulseObject, muteTargetKind)
 
     property string name: "unknown"
     property string iconName: model.IconName
@@ -242,22 +246,24 @@ Item {
             to: forceRaiseMaxVolume || item.model.Volume >= PulseAudio.NormalVolume * 1.01 ? PulseAudio.MaximalVolume : PulseAudio.NormalVolume
             stepSize: PulseAudio.NormalVolume / 100.0
             enabled: item.model.VolumeWritable
-            muted: item.model.Muted// || value === PulseAudio.MinimalVolume
+            muted: item.muteState ? item.muteState.muted : item.model.Muted
             volumeObject: item.model.PulseObject
-            value: to, item.model.Volume
+            reportedVolume: item.model.Volume
 
             onMoved: {
                 item.model.Volume = value;
-                item.model.Muted = false //value === PulseAudio.MinimalVolume;
+                if (value > PulseAudio.MinimalVolume && item.muteState) {
+                    item.muteState.ensureUnmuted(!pressed);
+                }
             }
             onPressedChanged: {
-                if (!pressed) {
-                    // Make sure to sync the volume once the button was
-                    // released.
-                    // Otherwise it might be that the slider is at v10
-                    // whereas PA rejected the volume change and is
-                    // still at v15 (e.g.).
-                    value = Qt.binding(() => item.model.Volume);
+                if (pressed) {
+                    if (item.muteState) {
+                        item.muteState.beginVolumeGesture();
+                    }
+                } else {
+                    // VolumeSlider follows fresh backend notifications; reading
+                    // the cached model here can undo the completed drag.
                     if (type === "sink-output") { // It used to be "sink" but that never happens so this code never happens
                         playFeedback(item.model.Index);
                     }
@@ -290,11 +296,13 @@ Item {
             Layout.alignment: Qt.AlignHCenter
             Layout.bottomMargin: 3
 
-            property bool isMuted: item.model.Muted //|| slider.value === PulseAudio.MinimalVolume
+            property bool isMuted: item.muteState ? item.muteState.muted : item.model.Muted
 
             hoverEnabled: true
             onClicked: {
-                item.model.Muted = !item.model.Muted
+                if (item.muteState) {
+                    item.muteState.toggle();
+                }
                 muteTooltip.hideImmediately();
             }
             onContainsMouseChanged: {
@@ -399,7 +407,8 @@ Item {
     }
 
     function setVolumeByPercent(targetPercent) {
-        item.model.PulseObject.volume = Math.round(PulseAudio.NormalVolume * (targetPercent/100));
+        slider.value = Math.round(PulseAudio.NormalVolume * (targetPercent / 100));
+        slider.moved();
     }
 
     function setAsDefault(): void {

@@ -32,11 +32,51 @@ PlasmoidItem {
     }
 
     property bool volumeFeedback: config.audioFeedback
-    property bool globalMute: config.globalMute
+    property bool globalMute: config.globalMuteSinks
     property bool globalMuteSources: config.globalMuteSources
     property string displayName: i18n("Audio Volume")
     property QtObject draggedStream: null
     property QtObject mixerWindow: null
+
+    property var muteControllers: ({})
+    Component {
+        id: muteControllerComponent
+        AeroMuteController {
+            onFailed: message => console.warn("Audio mute:", message)
+        }
+    }
+    function muteControllerFor(pulseObject, kind) {
+        if (!pulseObject) {
+            return null;
+        }
+        const key = kind + ":" + pulseObject.index;
+        let state = muteControllers[key];
+        if (!state || state.target !== pulseObject) {
+            if (state) {
+                state.destroy();
+            }
+            state = muteControllerComponent.createObject(main, {target: pulseObject, kind: kind});
+            muteControllers[key] = state;
+        }
+        return state;
+    }
+
+    AeroVolumeShortcutWatcher {
+        onVolumeAdjusted: {
+            const state = main.muteControllerFor(PreferredDevice.sink, "sink");
+            if (state) {
+                state.ensureUnmuted(true);
+            }
+        }
+        onPlaybackMuteToggled: {
+            const state = main.muteControllerFor(PreferredDevice.sink, "sink");
+            if (state) {
+                state.followGlobalMute();
+            }
+        }
+    }
+
+    readonly property var preferredMuteState: main.muteControllerFor(PreferredDevice.sink, "sink")
 
     property bool showVirtualDevices: Plasmoid.configuration.showVirtualDevices
 
@@ -47,7 +87,7 @@ PlasmoidItem {
     switchHeight: Layout.minimumHeight
     switchWidth: Layout.minimumWidth
 
-    Plasmoid.icon: PreferredDevice.sink && !isDummyOutput(PreferredDevice.sink) ? AudioIcon.forVolume(volumePercent(PreferredDevice.sink.volume), PreferredDevice.sink.muted, "") : AudioIcon.forVolume(0, true, "")
+    Plasmoid.icon: PreferredDevice.sink && !isDummyOutput(PreferredDevice.sink) ? AudioIcon.forVolume(volumePercent(PreferredDevice.sink.volume), preferredMuteState ? preferredMuteState.muted : PreferredDevice.sink.muted, "") : AudioIcon.forVolume(0, true, "")
     Plasmoid.title: "Mixer"
 
     toolTipMainText: {
@@ -56,7 +96,7 @@ PlasmoidItem {
             return displayName;
         }
 
-        if (sink.muted) {
+        if (preferredMuteState ? preferredMuteState.muted : sink.muted) {
             return i18n("Volume: Muted");
         } else {
             return i18n("Volume: %1%", volumePercent(sink.volume));
@@ -199,7 +239,7 @@ PlasmoidItem {
             if (mouse.button == Qt.LeftButton) {
                 wasExpanded = main.expanded;
             } else if (mouse.button == Qt.MiddleButton) {
-                GlobalService.globalMute();
+                GlobalService.globalMuteSinks();
             }
         }
         onClicked: mouse => {
@@ -366,7 +406,7 @@ PlasmoidItem {
             checkable: true
             checked: globalMute
             onTriggered: {
-                GlobalService.globalMute();
+                GlobalService.globalMuteSinks();
             }
         },
         PlasmaCore.Action {
@@ -429,14 +469,14 @@ PlasmoidItem {
             config.microphoneSensitivityOsd = false;
             config.save();
         }
-        if (Plasmoid.configuration.globalMute === true && !config.globalMute) {
-            config.globalMute = true;
+        if (Plasmoid.configuration.globalMute === true && !config.globalMuteSinks) {
+            config.globalMuteSinks = true;
             config.save();
         }
         if (Plasmoid.configuration.globalMuteDevices.length !== 0) {
             for (const device in Plasmoid.configuration.globalMuteDevices) {
-                if (!config.globalMuteDevices.includes(device)) {
-                    config.globalMuteDevices.push(device);
+                if (!config.globalMuteSinksMutedDevices.includes(device)) {
+                    config.globalMuteSinksMutedDevices.push(device);
                 }
             }
             config.save();

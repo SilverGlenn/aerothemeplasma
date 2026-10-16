@@ -24,6 +24,17 @@ PC3.Slider {
 
     property VolumeObject volumeObject
 
+    // Backend updates are asynchronous, and some Bluetooth sinks do not send
+    // a volume-change notification at all. Only a fresh reported change should
+    // replace the requested value; never re-read a stale snapshot on release.
+    property real reportedVolume: from
+    onReportedVolumeChanged: {
+        if (!pressed) {
+            value = reportedVolume;
+        }
+    }
+    Component.onCompleted: value = reportedVolume
+
     // When muted, the whole slider will appear slightly faded, but remain
     // functional and interactive.
     property bool muted: false
