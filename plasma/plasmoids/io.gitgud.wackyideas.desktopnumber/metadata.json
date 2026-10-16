@@ -1,0 +1,15 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Id": "io.gitgud.wackyideas.desktopnumber",
+        "Name": "Desktop Number",
+        "Description": "Just the current desktop number in Segoe UI Bold",
+        "Icon": "preferences-desktop-virtual",
+        "Category": "System Information",
+        "Version": "1.1.0",
+        "License": "GPL-2.0-or-later",
+        "EnabledByDefault": false
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-NotificationAreaCategory": "SystemServices"
+}

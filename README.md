@@ -25,6 +25,18 @@ It uses the installed `plasmawindowed` host, keeps preview settings separate, an
 operates on real desktop windows. Close the preview window to stop. See the
 validation/staging document above for limitations and headless testing.
 
+## Desktop number tray widget
+
+A minimal **Segoe UI Bold** current-desktop number, sized to the tray icons.
+Install and show only this widget (without replacing the theme or restarting Plasma):
+
+```bash
+./scripts/install-desktop-number.sh --enable
+```
+
+See [desktop-number setup and tests](docs/desktop-number.md). It is also available
+as **Desktop Number** in System Tray Settings after installation.
+
 ## HIATUS NOTICE: This is a long overdue announcement, but development will slow down significantly as a result of real life priorities I have to take care of first. Estimated time until I continue development is unknown, but don't expect anything significant in the following few months, until August, probably. Thank you for your patience and support.
 
 ## Microsoft® Windows™ is a registered trademark of Microsoft® Corporation. This name is used for referential use only, and does not aim to usurp copyrights from Microsoft. Microsoft Ⓒ 2025 All rights reserved. All resources belong to Microsoft Corporation.

@@ -8,6 +8,7 @@ set(plasmoids
     io.gitgud.wackyideas.networkmanagement
     io.gitgud.wackyideas.volume
     io.gitgud.wackyideas.keyboardlayout
+    io.gitgud.wackyideas.desktopnumber
 
     io.gitgud.wackyideas.SevenStart
     io.gitgud.wackyideas.seventasks
