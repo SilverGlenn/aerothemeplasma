@@ -106,6 +106,7 @@ QtControls.ItemDelegate {
 
                 PlasmaComponents3.Label {
                     id: detailsLabel
+                    objectName: "batteryStatusLabel"
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
 
@@ -127,18 +128,22 @@ QtControls.ItemDelegate {
                             } else if(root.batteryChargeState === BatteryControlModel.Charging || root.batteryChargeState === BatteryControlModel.NoCharge) {
 
                                 if(root.batteryChargeState === BatteryControlModel.NoCharge && !root.batteryIsPowerSupply) {
-                                    result = i18n("%1% available", root.batteryPercent);
+                                    result = i18n("Available (%1%)", root.batteryPercent);
 
                                 } else {
-                                    result = i18n("%1% available (plugged in, %2)", root.batteryPercent, root.batteryChargeState === BatteryControlModel.NoCharge ? i18n("not charging") : i18n("charging"));
+                                    result = root.batteryChargeState === BatteryControlModel.NoCharge
+                                        ? i18n("Plugged in, not charging (%1%)", root.batteryPercent)
+                                        : i18n("Charging (%1%)", root.batteryPercent);
 
                                 }
 
                             } else if(root.batteryChargeState === BatteryControlModel.Discharging) {
-                                if(detailsLabel.remainingTimeRowVisible && !detailsLabel.isEstimatingRemainingTime) {
-                                    result = i18nc("Battery is discharging", "%1 (%2%) remaining", KCoreAddons.Format.formatDuration(root.remainingTime, KCoreAddons.FormatTypes.AbbreviatedDuration | KCoreAddons.FormatTypes.HideSeconds), root.batteryPercent);
+                                if (root.pluggedIn && root.batteryIsPowerSupply) {
+                                    result = i18n("Plugged in, discharging (%1%)", root.batteryPercent);
+                                } else if(detailsLabel.remainingTimeRowVisible && !detailsLabel.isEstimatingRemainingTime) {
+                                    result = i18nc("Battery is discharging", "%1 remaining (%2%)", KCoreAddons.Format.formatDuration(root.remainingTime, KCoreAddons.FormatTypes.AbbreviatedDuration | KCoreAddons.FormatTypes.HideSeconds), root.batteryPercent);
                                 } else {
-                                    result = i18nc("Battery is discharging", "%1% remaining", root.batteryPercent);
+                                    result = i18nc("Battery is discharging", "On battery (%1%)", root.batteryPercent);
                                 }
 
                             }

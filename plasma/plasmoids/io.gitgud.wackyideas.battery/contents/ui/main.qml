@@ -82,17 +82,9 @@ PlasmoidItem {
         return iconName + symbolicSuffix;
     }
 
-    signal inhibitionChangeRequested(bool inhibit)
-
-    onInhibitionChangeRequested: inhibit => {
-        inhibitionControl.isSilent = expanded; // show OSD only when the plasmoid isn't expanded since the changing switch is feedback enough
-
-        if (inhibit) {
-            const reason = i18n("The battery applet has enabled suppressing sleep and screen locking");
-            inhibitionControl.inhibit(reason)
-        } else {
-            inhibitionControl.uninhibit()
-        }
+    PowerBrightnessAction {
+        id: brightnessAction
+        applets: Plasmoid.containment ? Plasmoid.containment.applets : []
     }
 
     signal activateProfileRequested(string profile)
@@ -177,9 +169,7 @@ PlasmoidItem {
         }
 
         if (inhibitionControl.isManuallyInhibited) {
-            parts.push(i18n("Automatic sleep and screen locking are disabled; middle-click to re-enable"));
-        } else {
-            parts.push(i18n("Middle-click to disable automatic sleep and screen locking"));
+            parts.push(i18n("Automatic sleep and screen locking are currently blocked"));
         }
 
         if (powerProfilesControl.isInPerformanceProfile) {
@@ -238,13 +228,11 @@ PlasmoidItem {
 
         model: batteryControl
 
-        acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+        acceptedButtons: Qt.LeftButton
         property bool wasExpanded: false
         onPressed: wasExpanded = batterymonitor.expanded
         onClicked: mouse => {
-            if (mouse.button === Qt.MiddleButton) {
-                batterymonitor.inhibitionChangeRequested(!inhibitionControl.isManuallyInhibited);
-            } else {
+            if (mouse.button === Qt.LeftButton) {
                 batterymonitor.expanded = !wasExpanded;
             }
         }
@@ -274,24 +262,16 @@ PlasmoidItem {
     fullRepresentation: PopupDialog {
         id: dialogItem
 
-        readonly property var pmControl: inhibitionControl
-
         //readonly property var appletInterface: batterymonitor
         readonly property int flyoutIntendedWidth: 16 * 15
         readonly property int flyoutImplicitHeight: dialogItem.contentItem.implicitHeight
         model: batteryControl
 
-        isManuallyInhibited: inhibitionControl.isManuallyInhibited
-        isManuallyInhibitedError: inhibitionControl.isManuallyInhibitedError
         pluggedIn: batteryControl.pluggedIn
         chargeStopThreshold: batteryControl.chargeStopThreshold
         remainingTime: batteryControl.remainingTime
         activeProfile: powerProfilesControl.activeProfile
         activeProfileError: powerProfilesControl.profileError
-        requestedInhibitions: inhibitionControl.requestedInhibitions
-        //inhibitions: inhibitionControl.inhibitions
-        //blockedInhibitions: inhibitionControl.blockedInhibitions
-        inhibitsLidAction: inhibitionControl.isLidPresent && !inhibitionControl.triggersLidAction
         profilesInstalled: powerProfilesControl.isPowerProfileDaemonInstalled
         profiles: powerProfilesControl.profiles
         inhibitionReason: powerProfilesControl.inhibitionReason
@@ -299,35 +279,46 @@ PlasmoidItem {
         profileHolds: powerProfilesControl.profileHolds
         isTlpInstalled: powerProfilesControl.isTlpInstalled
         containsBrokenBatteries: brokenBatteriesModel.count > 0
+        brightnessAvailable: brightnessAction.available
+        powerOptionsAvailable: batterymonitor.kcmAuthorized
 
         onActivateProfileRequested: profile => {
             batterymonitor.activateProfileRequested(profile);
         }
 
-        onInhibitionChangeRequested: inhibit => {
-            batterymonitor.inhibitionChangeRequested(inhibit);
+        onBrightnessRequested: {
+            batterymonitor.expanded = false;
+            Qt.callLater(() => brightnessAction.activate());
+        }
+        onPowerOptionsRequested: {
+            batterymonitor.expanded = false;
+            configureAction.trigger();
         }
     }
 
-    Plasmoid.contextualActions: [
-        PlasmaCore.Action {
-            text: i18n("&Show Energy Information…")
-            icon.name: "documentinfo"
-            visible: batterymonitor.kcmEnergyInformationAuthorized
-            onTriggered: checked => KCMUtils.KCMLauncher.openInfoCenter("kcm_energyinfo")
-        }
-    ]
+    Plasmoid.contextualActions: [configureAction, energyInformationAction]
+
+    PlasmaCore.Action {
+        id: energyInformationAction
+        text: i18n("&Show Energy Information…")
+        icon.name: "documentinfo"
+        visible: batterymonitor.kcmEnergyInformationAuthorized
+        onTriggered: checked => KCMUtils.KCMLauncher.openInfoCenter("kcm_energyinfo")
+    }
 
     PlasmaCore.Action {
         id: configureAction
         text: i18n("&Configure Power Management…")
         icon.name: "configure"
+        visible: batterymonitor.kcmAuthorized
         onTriggered: checked => {
             KCMUtils.KCMLauncher.openSystemSettings("kcm_powerdevilprofilesconfig");
         }
     }
 
     Component.onCompleted: {
-        Plasmoid.setInternalAction("configure", configureAction);
+        // The flyout owns its two-link footer. Keep configuration in the context
+        // menu without asking the Aero tray to add a duplicate generic footer.
+        Plasmoid.removeInternalAction("configure");
     }
 }

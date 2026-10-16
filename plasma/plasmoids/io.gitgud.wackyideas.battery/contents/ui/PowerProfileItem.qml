@@ -12,7 +12,6 @@ import QtQuick.Controls as QtControls
 import org.kde.plasma.components as PlasmaComponents3
 import org.kde.kirigami as Kirigami
 import org.kde.notification
-import org.kde.plasma.workspace.dbus as DBus
 
 QtControls.ItemDelegate {
     id: root
@@ -28,7 +27,11 @@ QtControls.ItemDelegate {
 
     property string inhibitionReason
     readonly property bool inhibited: inhibitionReason !== ""
-    property var inhibitionControllerRef
+    property Item previousFocusItem: null
+    property Item nextFocusItem: null
+    property var profiles: ["power-saver", "balanced", "performance"]
+    readonly property Item firstProfileRadio: [powerSaverRadio, balancedRadio, performanceRadio].find(button => button.visible && button.enabled) || null
+    readonly property Item lastProfileRadio: [performanceRadio, balancedRadio, powerSaverRadio].find(button => button.visible && button.enabled) || null
     property alias powerSaverRadio: powerSaverRadio
     property alias performanceRadio: performanceRadio
 
@@ -42,7 +45,7 @@ QtControls.ItemDelegate {
     // inhibitionReason string).
     readonly property var profileData: [
         {
-            label: i18n("Power Save"),
+            label: i18n("Power saver"),
             profile: "power-saver",
             canBeInhibited: false,
             radioButton: powerSaverRadio,
@@ -54,7 +57,7 @@ QtControls.ItemDelegate {
             radioButton: balancedRadio,
             icon: "battery-profile-balanced"
         }, {
-            label: i18n("Performance"),
+            label: i18n("High performance"),
             profile: "performance",
             canBeInhibited: true,
             radioButton: performanceRadio,
@@ -77,8 +80,11 @@ QtControls.ItemDelegate {
 
     Keys.forwardTo: [radioButtons]
 
-    onFocusChanged: {
-        powerSaverRadio.focus = true;
+    onActiveFocusChanged: {
+        if (activeFocus && firstProfileRadio) {
+            const selected = activeProfileData ? activeProfileData.radioButton : null;
+            (selected && selected.visible && selected.enabled ? selected : firstProfileRadio).forceActiveFocus(Qt.TabFocusReason);
+        }
     }
 
     Notification {
@@ -95,6 +101,7 @@ QtControls.ItemDelegate {
 
         PlasmaComponents3.Label {
             visible: root.profilesAvailable //&& !root.isTlpInstalled
+            objectName: "powerPlanHeading"
             text: i18n("Select a power plan:")
             opacity: 0.75
         }
@@ -111,27 +118,39 @@ QtControls.ItemDelegate {
         }
         ColumnLayout {
             id: radioButtons
-            Layout.leftMargin: Kirigami.Units.smallSpacing+1
+            Layout.leftMargin: 0
             spacing: 0
             visible: root.profilesAvailable //&& !root.isTlpInstalled
 
             QtControls.RadioButton {
                 id: powerSaverRadio
+                objectName: "powerSaverRadio"
+                implicitHeight: Math.max(22, implicitContentHeight + 4, implicitIndicatorHeight + 4)
+                topPadding: 2
+                bottomPadding: 2
+                leftPadding: 0
+                visible: root.profiles.indexOf(profileId) !== -1
                 property string profileId: "power-saver"
                 property int value: 0
                 text: root.profileData.find(profile => profile.profile === profileId).label
-                checked: activeProfileData.profile == profileId
+                checked: root.activeProfile === profileId
                 KeyNavigation.tab: balancedRadio
                 KeyNavigation.down: balancedRadio
-                KeyNavigation.backtab: root.inhibitionControllerRef
-                KeyNavigation.up: root.inhibitionControllerRef
+                KeyNavigation.backtab: root.previousFocusItem
+                KeyNavigation.up: root.previousFocusItem
             }
             QtControls.RadioButton {
                 id: balancedRadio
+                objectName: "balancedRadio"
+                implicitHeight: Math.max(22, implicitContentHeight + 4, implicitIndicatorHeight + 4)
+                topPadding: 2
+                bottomPadding: 2
+                leftPadding: 0
+                visible: root.profiles.indexOf(profileId) !== -1
                 property string profileId: "balanced"
                 property int value: 1
                 text: root.profileData.find(profile => profile.profile === profileId).label
-                checked: activeProfileData.profile == profileId
+                checked: root.activeProfile === profileId
                 KeyNavigation.tab: performanceRadio
                 KeyNavigation.down: performanceRadio
                 KeyNavigation.backtab: powerSaverRadio
@@ -139,24 +158,24 @@ QtControls.ItemDelegate {
             }
             QtControls.RadioButton {
                 id: performanceRadio
+                objectName: "performanceRadio"
+                implicitHeight: Math.max(22, implicitContentHeight + 4, implicitIndicatorHeight + 4)
+                topPadding: 2
+                bottomPadding: 2
+                leftPadding: 0
+                visible: root.profiles.indexOf(profileId) !== -1
+                enabled: !root.inhibited
                 property string profileId: "performance"
                 property int value: 2
                 text: root.profileData.find(profile => profile.profile === profileId).label
-                checked: activeProfileData.profile == profileId
+                checked: root.activeProfile === profileId
                 KeyNavigation.backtab: balancedRadio
                 KeyNavigation.up: balancedRadio
-                KeyNavigation.tab: root.inhibitionControllerRef
-                KeyNavigation.down: root.inhibitionControllerRef
+                KeyNavigation.tab: root.nextFocusItem
+                KeyNavigation.down: root.nextFocusItem
             }
 
 
-            Connections {
-                target: root
-                function onActiveProfileChanged() {
-                    DBus.SessionBus.asyncCall({service: "org.kde.plasmashell", path: "/org/kde/osdService", iface: "org.kde.osdService", member: "showText",
-                        arguments: [new DBus.string(root.profileData[root.activeProfileIndex].icon), new DBus.string(i18n("Power profile set to: ") + root.profileData[root.activeProfileIndex].label)], signature: "(ss)"});
-                }
-            }
             Connections {
                 target: root
                 function onActiveProfileErrorChanged() {
