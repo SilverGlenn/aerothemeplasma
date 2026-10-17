@@ -7,6 +7,7 @@ output=$(cd "$output" && pwd)
 export SOURCE_ROOT="$root" TASKBAR_TEST_OUTPUT="$output"
 python3 "$root/tests/taskbar/generate-fixtures.py"
 node "$root/tests/taskbar/policy-tests.js" "$root/plasma/plasmoids/io.gitgud.wackyideas.seventasks/contents/ui" | tee "$output/policy.log"
+node "$root/tests/taskbar/shortcut-tests.js" "$root/plasma/plasmoids/io.gitgud.wackyideas.seventasks/contents/ui" | tee "$output/shortcuts.log"
 for scale in 1 1.25 1.5; do
     for suite in tests previews; do
         printf 'var directory = "%s/snapshots"; var expectedDpr = %s;\n' "$output" "$scale" > "$output/$suite/SnapshotPaths.js"

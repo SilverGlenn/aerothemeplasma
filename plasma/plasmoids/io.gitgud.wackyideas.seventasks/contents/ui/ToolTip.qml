@@ -24,6 +24,7 @@ Item {
     property bool taskHovered: false
     property var modelIndex
     property var taskIndex
+    property string shortcutWindowId: ""
     property bool isGroupParent: false
     property bool forceList: false
     readonly property bool popupVisible: parentTask ? parentTask.previewVisible : false

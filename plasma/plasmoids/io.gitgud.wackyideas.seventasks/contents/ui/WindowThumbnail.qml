@@ -34,6 +34,8 @@ MouseArea {
     readonly property var modelIndex: isGroupDelegate ? (tasksModel.makeModelIndex(root.taskIndex, index)) : root.modelIndex
     readonly property var windows: isGroupDelegate ? model.WinIdList : root.windows
     readonly property var captureWindowId: windows && windows.length ? windows[0] : undefined
+    readonly property bool shortcutSelected: !!root.shortcutWindowId
+        && String(captureWindowId) === root.shortcutWindowId
     readonly property var minimized: isGroupDelegate ? model.IsMinimized : root.minimized
     readonly property var demandsAttention: isGroupDelegate ? model.IsDemandingAttention : root.demandsAttention
 
@@ -107,7 +109,7 @@ MouseArea {
             imagePath: Qt.resolvedUrl("svgs/menuitem.svg")
             prefix: "active"
 
-            visible: active
+            visible: root.shortcutWindowId ? shortcutSelected : active
         }
 
         KSvg.FrameSvgItem {

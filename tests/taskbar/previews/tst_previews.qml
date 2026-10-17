@@ -58,6 +58,7 @@ TestCase {
         property bool containsDrag: false
         property bool popupVisible: test.fixtureParentTask.previewVisible
         property var windows: ["media"]
+        property string shortcutWindowId: ""
         property var modelIndex: 9
         property real availableWidth: 784
         property real availableHeight: 544
@@ -176,6 +177,20 @@ TestCase {
         var first=list.itemAtIndex(0), second=list.itemAtIndex(1); verify(first); verify(second);
         verify(second.x >= first.x + first.width); compare(second.x-first.x-first.width,group.gutter);
         tasksModel.remove(1); wait(100); compare(list.count,1); verify(tip.width > 0);
+    }
+    function test_shortcutSelectionHighlightsMatchingWindow() {
+        // Native task roles supply window-ID arrays. ListModel turns nested
+        // arrays into ListModels, so use the root's real array for this check.
+        var row=thumbnail(); verify(row);
+        tip.shortcutWindowId="one";
+        compare(row.shortcutSelected,true);
+        var frame=descend(row,function(item){return String(item.prefix)==="active";});
+        verify(frame); compare(frame.visible,true);
+        var height=tip.height, width=tip.width;
+        tip.shortcutWindowId="other-window";
+        compare(row.shortcutSelected,false);
+        compare(frame.visible,false);
+        compare(tip.height,height); compare(tip.width,width);
     }
     function test_listHoverPeekTimingAndCloseCancellation() {
         addWindows(8); tasksModel.setProperty(0,"IsMinimized",false);
