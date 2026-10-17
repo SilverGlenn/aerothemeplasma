@@ -7,6 +7,13 @@ TestCase {
  width:800; height:600
  InputFixture { id: input; x:100; y:100 }
  GeometryFixture { id: geometry; y:300 }
+ SignalSpy { id: windowsSpy; target: input.taskThumbnail; signalName: "windowsChanged" }
+ function test_reusingPreviewKeepsBindings() {
+  input.updateToolTipBindings()
+  windowsSpy.clear()
+  for (var i=0; i<10; ++i) input.updateToolTipBindings()
+  compare(windowsSpy.count,0)
+ }
  function init() {
   input.reset()
   geometry.rows=[]; geometry.iconsOnly=false; geometry.vertical=false; geometry.width=320; geometry.height=40

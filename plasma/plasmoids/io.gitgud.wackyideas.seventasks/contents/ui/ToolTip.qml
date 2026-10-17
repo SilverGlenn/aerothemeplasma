@@ -108,7 +108,9 @@ Item {
         width: tooltip.width
         height: tooltip.height
         active: false
-        asynchronous: true
+        // Build the small layout before the dialog takes its initial size.
+        // Live window capture remains asynchronous inside WindowThumbnail.
+        asynchronous: false
         onLoaded: tooltip.tryFocusFirstRow()
         sourceComponent: isGroupParent ? groupThumbnails : windowThumbnail
 

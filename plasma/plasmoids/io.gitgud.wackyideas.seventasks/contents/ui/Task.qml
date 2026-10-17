@@ -97,7 +97,11 @@ PlasmaCore.ToolTipArea {
     }
 
     function updateToolTipBindings() {
-        taskThumbnail.parentTask = Qt.binding(() => task);
+        // The bindings already track this task's model. Reinstalling them can
+        // emit windowsChanged for an unchanged window-ID array and restart capture.
+        if (taskThumbnail.parentTask === task) {
+            return;
+        }
 
         taskThumbnail.demandsAttention = Qt.binding(() => model.IsDemandingAttention);
         taskThumbnail.minimized = Qt.binding(() => model.IsMinimized);
@@ -113,6 +117,9 @@ PlasmaCore.ToolTipArea {
         taskThumbnail.isGroupParent = Qt.binding(() => model.IsGroupParent);
         taskThumbnail.taskHovered = Qt.binding(() => dragArea.containsMouse);
         taskThumbnail.forceList = Qt.binding(() => task.forceGroupList);
+        // Activate the content loader only after its identity and media data
+        // are bound, so its first layout belongs to the requested task.
+        taskThumbnail.parentTask = Qt.binding(() => task);
     }
     // END TOOLTIP CODE
 
