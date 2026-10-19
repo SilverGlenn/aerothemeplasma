@@ -1,0 +1,108 @@
+diff --git a/effects_cpp/wayland/kde-effects-aeroglassblur/src/blur.cpp b/effects_cpp/wayland/kde-effects-aeroglassblur/src/blur.cpp
+index 61ca295..5031022 100755
+--- a/effects_cpp/wayland/kde-effects-aeroglassblur/src/blur.cpp
++++ b/effects_cpp/wayland/kde-effects-aeroglassblur/src/blur.cpp
+@@ -488,10 +488,17 @@ void BlurEffect::updateBlurRegion(EffectWindow *w)
+         }
+     }
+ 
+-    if (content.has_value() || frame.has_value()) {
++    if (!shouldNotBlur(w) && (content.has_value() || frame.has_value())) {
+         BlurEffectData &data = m_windows[w];
+         data.content = content;
+         data.frame = frame;
++        // KWin 6.6 collects damage from scene items, not prePaintWindow().
++        // Keep the background dependency alongside the cached blur textures.
++        if (!data.blurItem) {
++            data.blurItem = std::make_unique<BackgroundEffectItem>(w->windowItem());
++        }
++        data.blurItem->setPixelsToExpandRepaintsBelowOpaqueRegions(m_expandSize);
++        data.blurItem->setEffectBoundingRect(blurRegion(w).boundingRect());
+     } else {
+         if (auto it = m_windows.find(w); it != m_windows.end()) {
+             effects->makeOpenGLContextCurrent();
+@@ -693,8 +700,6 @@ Region BlurEffect::blurRegion(EffectWindow *w, bool noRoundedCorners)
+ 
+ void BlurEffect::prePaintScreen(ScreenPrePaintData &data, std::chrono::milliseconds presentTime)
+ {
+-    m_paintedDeviceArea = Region();
+-    m_currentDeviceBlur = Region();
+     m_currentView = data.view;
+ 
+ 
+@@ -717,44 +722,6 @@ void BlurEffect::prePaintWindow(RenderView *view, EffectWindow *w, WindowPrePain
+         data.setTranslucent();
+     }
+     effects->prePaintWindow(view, w, data, presentTime);
+-
+-    const Region oldOpaque = data.deviceOpaque;
+-    if (data.deviceOpaque.intersects(m_currentDeviceBlur)) {
+-        // to blur an area partially we have to shrink the opaque area of a window
+-        Region newOpaque;
+-        for (const Rect &rect : data.deviceOpaque.rects()) {
+-            newOpaque += rect.adjusted(m_expandSize, m_expandSize, -m_expandSize, -m_expandSize);
+-        }
+-        data.deviceOpaque = newOpaque;
+-
+-        // we don't have to blur a region we don't see
+-        m_currentDeviceBlur -= newOpaque;
+-    }
+-
+-    // if we have to paint a non-opaque part of this window that intersects with the
+-    // currently blurred region we have to redraw the whole region
+-    if ((data.devicePaint - oldOpaque).intersects(m_currentDeviceBlur)) {
+-        data.devicePaint += m_currentDeviceBlur;
+-    }
+-
+-    // in case this window has regions to be blurred
+-    const Region blurArea = view->mapToDeviceCoordinatesAligned(QRectF(blurRegion(w).boundingRect()).translated(w->pos()));
+-
+-    // if this window or a window underneath the blurred area is painted again we have to
+-    // blur everything
+-    if (m_paintedDeviceArea.intersects(blurArea) || data.devicePaint.intersects(blurArea)) {
+-        data.devicePaint += blurArea;
+-        // we have to check again whether we do not damage a blurred area
+-        // of a window
+-        if (blurArea.intersects(m_currentDeviceBlur)) {
+-            data.devicePaint += m_currentDeviceBlur;
+-        }
+-    }
+-
+-    m_currentDeviceBlur += blurArea;
+-
+-    m_paintedDeviceArea -= data.deviceOpaque;
+-    m_paintedDeviceArea += data.devicePaint;
+ }
+ 
+ bool BlurEffect::scaledOrTransformed(const EffectWindow *w, int mask, const WindowPaintData &data) const
+diff --git a/effects_cpp/wayland/kde-effects-aeroglassblur/src/blur.h b/effects_cpp/wayland/kde-effects-aeroglassblur/src/blur.h
+index 15b8794..b5e38b6 100755
+--- a/effects_cpp/wayland/kde-effects-aeroglassblur/src/blur.h
++++ b/effects_cpp/wayland/kde-effects-aeroglassblur/src/blur.h
+@@ -9,6 +9,7 @@
+ 
+ #include "effect/effect.h"
+ #include "opengl/glutils.h"
++#include "scene/backgroundeffectitem.h"
+ #include "window.h"
+ 
+ #include <QList>
+@@ -44,6 +45,9 @@ struct BlurEffectData
+     /// The region that should be blurred behind the frame
+     std::optional<Region> frame;
+ 
++    /// Register the glass with the scene so damage below it repaints the blur.
++    std::unique_ptr<BackgroundEffectItem> blurItem;
++
+     /// The render data per screen. Screens can have different color spaces.
+     std::unordered_map<RenderView *, BlurRenderData> render;
+ };
+@@ -177,8 +181,6 @@ private:
+ 
+     bool m_valid = false;
+     long net_wm_blur_region = 0;
+-    Region m_paintedDeviceArea; // keeps track of all painted areas (from bottom to top)
+-    Region m_currentDeviceBlur; // keeps track of the currently blured area of the windows(from bottom to top)
+     RenderView *m_currentView = nullptr;
+ 
+     size_t m_iterationCount; // number of times the texture will be downsized to half size
