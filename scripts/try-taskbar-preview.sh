@@ -47,6 +47,24 @@ if [[ "$mode" == prepare ]]; then
     exit 0
 fi
 profile=$(mktemp -d "$cache/window.XXXXXXXX")
+# Remove the profile this script just created once the host exits cleanly. After
+# a failure it is kept, because host.log inside it is the diagnostic.
+host_pid=
+cleanup_profile() {
+    local status=$?
+    trap - EXIT INT TERM
+    if [[ -n "$host_pid" ]]; then kill -TERM "$host_pid" 2>/dev/null || true; fi
+    if [[ $status -eq 0 || $status -eq 130 || $status -eq 143 ]] \
+            && [[ -n "$profile" && "$profile" == "$cache"/window.?* && "$profile" != *..* && ! -L "$profile" ]]; then
+        rm -rf -- "${profile:?}"
+    else
+        printf 'Preview settings/log kept: %s\n' "$profile" >&2
+    fi
+    exit "$status"
+}
+trap cleanup_profile EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 mkdir -p "$profile"/{config,data,cache,runtime,home}
 chmod 700 "$profile/runtime"
 # Read-only copies of UI preferences, never panel/session layout or shortcuts.
@@ -61,20 +79,25 @@ log="$profile/host.log"
 printf 'Preview settings/log: %s\n' "$profile"
 if [[ "$mode" == headless ]]; then
     # Private bus/runtime and no compositor connection for automated load checks.
-    exec env HOME="$profile/home" XDG_CONFIG_HOME="$profile/config" \
+    env HOME="$profile/home" XDG_CONFIG_HOME="$profile/config" \
         XDG_DATA_HOME="$profile/data" XDG_CACHE_HOME="$profile/cache" \
         XDG_RUNTIME_DIR="$profile/runtime" XDG_CONFIG_DIRS="$profile/config" \
         XDG_DATA_DIRS="$data_dirs" QT_PLUGIN_PATH="$plugin_dirs" \
         QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
         dbus-run-session --config-file="$root/tests/taskbar/session-bus.conf" -- \
-        plasmawindowed local.win7.seventasks.preview >"$log" 2>&1
+        plasmawindowed local.win7.seventasks.preview >"$log" 2>&1 &
+    host_pid=$!
+    wait "$host_pid"
+    exit $?
 fi
 printf '%s\n' 'Opening a separate window; the current panel is not replaced.' \
     'Its buttons operate REAL windows: use Close/Minimize/Launch deliberately.'
 # Keep HOME (fonts), runtime/display and the session bus for real window-model
 # access. Only this host's config/data/cache are redirected. Programs launched
 # from it may inherit those private XDG paths; this is a test, not a replacement.
-exec env XDG_CONFIG_HOME="$profile/config" XDG_DATA_HOME="$profile/data" \
+env XDG_CONFIG_HOME="$profile/config" XDG_DATA_HOME="$profile/data" \
     XDG_CACHE_HOME="$profile/cache" XDG_DATA_DIRS="$data_dirs" \
     QT_PLUGIN_PATH="$plugin_dirs" \
-    plasmawindowed local.win7.seventasks.preview >"$log" 2>&1
+    plasmawindowed local.win7.seventasks.preview >"$log" 2>&1 &
+host_pid=$!
+wait "$host_pid"

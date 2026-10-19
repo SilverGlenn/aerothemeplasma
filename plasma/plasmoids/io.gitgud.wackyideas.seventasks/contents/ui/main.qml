@@ -570,6 +570,11 @@ PlasmoidItem {
         }
     }
 
+    ShortcutPreviewController {
+        id: shortcutPreview
+        taskModel: tasksModel
+    }
+
     // This is called by plasmashell in response to a Meta+number shortcut.
     function activateTaskAtIndex(index) {
         if (typeof index !== "number") {
@@ -578,7 +583,16 @@ PlasmoidItem {
 
         var task = taskList.itemAtIndex(index);
         if (task) {
-            task.leftTapHandler.leftClick();
+            // Numbered shortcuts cycle independently of the mouse preference.
+            if (!task.showPreviews) {
+                task.hideImmediately();
+                tasks.pinnedToolTipOpen = false;
+            }
+            if (!shortcutPreview.cycleGroup(task)) {
+                TaskTools.activateTask(task.modelIndex(), task.model, Qt.NoModifier,
+                    task, Plasmoid, tasks, false, true);
+                shortcutPreview.showForTask(task);
+            }
         }
     }
 

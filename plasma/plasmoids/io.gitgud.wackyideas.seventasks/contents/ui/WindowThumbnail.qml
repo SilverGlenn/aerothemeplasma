@@ -33,6 +33,9 @@ MouseArea {
     readonly property var active: isGroupDelegate ? model.IsActive : root.active
     readonly property var modelIndex: isGroupDelegate ? (tasksModel.makeModelIndex(root.taskIndex, index)) : root.modelIndex
     readonly property var windows: isGroupDelegate ? model.WinIdList : root.windows
+    readonly property var captureWindowId: windows && windows.length ? windows[0] : undefined
+    readonly property bool shortcutSelected: !!root.shortcutWindowId
+        && String(captureWindowId) === root.shortcutWindowId
     readonly property var minimized: isGroupDelegate ? model.IsMinimized : root.minimized
     readonly property var demandsAttention: isGroupDelegate ? model.IsDemandingAttention : root.demandsAttention
 
@@ -45,7 +48,9 @@ MouseArea {
     property real thumbnailHeight: maxPreviewHeight
 
     implicitWidth: PreviewMetrics.boundedSize(PreviewMetrics.previewWidth + margins, root.availableWidth)
-    implicitHeight: Math.min(root.availableHeight, Math.max(1, Math.min(thumbnailHeight, maxPreviewHeight)) + margins + headerHeight + content.spacing + toolbarHeight)
+    // Capture readiness and aspect ratio must not move the popup. Letterbox
+    // each stream inside a stable slot, including while it reconnects.
+    implicitHeight: Math.min(root.availableHeight, maxPreviewHeight + margins + headerHeight + content.spacing + toolbarHeight)
 
     onImplicitHeightChanged: if (isGroupDelegate && ListView.view) ListView.view.updateMaxSize()
     onWindowsChanged: {
@@ -104,7 +109,7 @@ MouseArea {
             imagePath: Qt.resolvedUrl("svgs/menuitem.svg")
             prefix: "active"
 
-            visible: active
+            visible: root.shortcutWindowId ? shortcutSelected : active
         }
 
         KSvg.FrameSvgItem {
@@ -290,7 +295,7 @@ MouseArea {
 
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumHeight: Math.min(thumbnailRoot.thumbnailHeight, thumbnailRoot.maxPreviewHeight)
+            Layout.minimumHeight: thumbnailRoot.maxPreviewHeight
 
             Loader {
                 id: thumbnailLoader
@@ -313,7 +318,7 @@ MouseArea {
                     id: x11Thumbnail
 
                     PlasmaCore.WindowThumbnail {
-                        winId: windows !== undefined ? windows[0] : undefined
+                        winId: thumbnailRoot.captureWindowId
 
                         onPaintedSizeChanged: thumbnailRoot.thumbnailHeight = paintedHeight > 0 ? Math.min(paintedHeight, thumbnailRoot.maxPreviewHeight) : thumbnailRoot.maxPreviewHeight;
 
@@ -340,7 +345,7 @@ MouseArea {
 
                         TaskManager.ScreencastingRequest {
                             id: waylandItem
-                            uuid: windows[0]
+                            uuid: thumbnailRoot.captureWindowId
                         }
 
                         onStreamSizeChanged: outlineRect.updateSize()
@@ -414,9 +419,9 @@ MouseArea {
                     }
                 }
 
-                Connections { // Reload the component when thumbnailRoot's windows property changes. This fixes a bug in which the thumbnail shows the wrong window.
+                Connections { // Recreate capture only when the actual window changes.
                     target: thumbnailRoot
-                    function onWindowsChanged() {
+                    function onCaptureWindowIdChanged() {
                         thumbnailLoader.active = false;
                         thumbnailLoader.active = true;
                     }
@@ -459,7 +464,7 @@ MouseArea {
         readonly property QtObject root: thumbnailRoot.root
 
         active: root.playerData !== null && root.playerData !== undefined
-        asynchronous: true
+        asynchronous: false
         source: "PlayerController.qml"
 
         HoverHandler {

@@ -74,7 +74,7 @@ function activateNextPrevTask(anchor, next, wheelSkipMinimized, tasks) {
     tasks.tasksModel.requestActivate(target);
 }
 
-function activateTask(index, model, modifiers, task, plasmoid, tasks, windowViewAvailable) {
+function activateTask(index, model, modifiers, task, plasmoid, tasks, windowViewAvailable, cycleGroup = false) {
     if (modifiers & Qt.ShiftModifier) {
         tasks.tasksModel.requestNewInstance(index);
         return;
@@ -92,7 +92,7 @@ function activateTask(index, model, modifiers, task, plasmoid, tasks, windowView
         // Stacking order.
         // Otherwise cycle through all tasks in the group without paying attention
         // to the stacking order, which otherwise would change with every click
-        if (plasmoid.configuration.groupedTaskVisualization === 0) {
+        if (cycleGroup || plasmoid.configuration.groupedTaskVisualization === 0) {
             let childTaskList = [];
             let highestStacking = -Infinity;
             let lastUsedTask = undefined;

@@ -36,6 +36,7 @@ CGROUP_ROOT = Path("/sys/fs/cgroup")
 RUNTIME_BASE = Path("/run/user")
 ROOT = Path(__file__).resolve().parents[1]
 STARTUP_SECONDS = 30
+GUARDIAN_POLL_SECONDS = 2  # each poll checks session state via subprocesses; the loop can run up to 600 s
 ENV_KEYS = ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_DATA_DIRS",
             "XDG_RUNTIME_DIR", "DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS")
 FINAL = "restored"
@@ -650,7 +651,7 @@ def guardian(session, platform=None):
     else:
         raise Unsafe("real panel/centered Exit marker not ready before startup deadline")
     while True:
-        time.sleep(0.5)
+        time.sleep(GUARDIAN_POLL_SECONDS)
         state = load(session)
         if (state["phase"] != "ready" or not same_process(state["preview"], proc_identity(state["preview"]["pid"]))
                 or not platform.session_alive(state)):

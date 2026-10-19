@@ -24,6 +24,7 @@ Item {
     property bool taskHovered: false
     property var modelIndex
     property var taskIndex
+    property string shortcutWindowId: ""
     property bool isGroupParent: false
     property bool forceList: false
     readonly property bool popupVisible: parentTask ? parentTask.previewVisible : false
@@ -108,7 +109,9 @@ Item {
         width: tooltip.width
         height: tooltip.height
         active: false
-        asynchronous: true
+        // Build the small layout before the dialog takes its initial size.
+        // Live window capture remains asynchronous inside WindowThumbnail.
+        asynchronous: false
         onLoaded: tooltip.tryFocusFirstRow()
         sourceComponent: isGroupParent ? groupThumbnails : windowThumbnail
 

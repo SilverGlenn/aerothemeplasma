@@ -48,6 +48,13 @@ with tempfile.TemporaryDirectory(prefix="win7-preview-staging-") as temporary:
     check(hashlib.sha256((stage / plugin).read_bytes()).digest() == hashlib.sha256((build / plugin).read_bytes()).digest())
     run("stage", stage, "--native-build", build)
     check(len(list((stage / package).parent.glob(identity + ".backup-*"))) == 1)
+    for _ in range(4):
+        run("stage", stage, "--native-build", build)
+    check(len(list((stage / package).parent.glob(identity + ".backup-*"))) == 3)
+    check(len(list((stage / plugin).parent.glob("lib" + identity + ".so.backup-*"))) == 3)
+    rejected_prefix = subprocess.run([sys.executable, str(cli), "stage", "/usr/share/aero-test", "--native-build", str(build)],
+                                     capture_output=True, text=True)
+    check(rejected_prefix.returncode == 2 and not Path("/usr/share/aero-test").exists())
 
     before = tree_digest(stage)
     rejected("install", stage, "--from-stage", stage, "--confirm")
