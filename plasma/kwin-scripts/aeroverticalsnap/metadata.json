@@ -1,0 +1,12 @@
+{
+    "KPlugin": {
+        "Id": "aeroverticalsnap",
+        "Name": "Aero vertical snap",
+        "Description": "Maximize above a top tile and minimize below a bottom tile",
+        "Version": "1.0",
+        "License": "GPL-2.0-or-later"
+    },
+    "KPackageStructure": "KWin/Script",
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
+}
