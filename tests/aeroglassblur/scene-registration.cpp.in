@@ -1,0 +1,209 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Compiles the real dependency's region-update methods. Only the compositor/window
+// boundary is doubled; Qt geometry and the production ownership/data flow are real.
+#include <QGuiApplication>
+#include <QRegion>
+#include <QWindow>
+#include <QVariant>
+#include <algorithm>
+#include <iostream>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <unordered_map>
+#include <vector>
+
+namespace KWin {
+using Region = QRegion;
+using Rect = QRect;
+struct RenderView {};
+struct BlurRenderData {};
+class BackgroundEffectItem;
+struct WindowItem {
+    std::vector<BackgroundEffectItem *> backgroundItems;
+};
+class BackgroundEffectItem {
+public:
+    explicit BackgroundEffectItem(WindowItem *parent) : parent(parent) {
+        parent->backgroundItems.push_back(this);
+    }
+    ~BackgroundEffectItem() {
+        std::erase(parent->backgroundItems, this);
+    }
+    void setEffectBoundingRect(const QRectF &value) { bounds = value; }
+    void setPixelsToExpandRepaintsBelowOpaqueRegions(uint32_t value) { expansion = value; }
+    WindowItem *parent;
+    QRectF bounds;
+    uint32_t expansion = 0;
+};
+struct BlurProtocol {
+    Region value;
+    Region region() const { return value; }
+};
+struct SurfaceInterface {
+    BlurProtocol *requestedBlur = nullptr;
+    BlurProtocol *blur() { return requestedBlur; }
+};
+struct Decoration {
+    QRectF geometry;
+    Region requestedBlur;
+    QRectF rect() const { return geometry; }
+    Region blurRegion() const { return requestedBlur; }
+};
+struct EffectWindow {
+    WindowItem item;
+    SurfaceInterface *windowSurface = nullptr;
+    Decoration *windowDecoration = nullptr;
+    QWindow *internal = nullptr;
+    QRectF geometry = QRectF(50, 100, 800, 600);
+    QRectF buffer = geometry;
+    QRectF contents = QRectF(0, 0, 800, 600);
+    bool excluded = false;
+    bool forced = false;
+    bool firefox = false;
+    bool alpha = true;
+    Region firefoxRegion;
+    SurfaceInterface *surface() { return windowSurface; }
+    QWindow *internalWindow() { return internal; }
+    Decoration *decoration() const { return windowDecoration; }
+    WindowItem *windowItem() { return &item; }
+    bool decorationHasAlpha() const { return alpha && windowDecoration; }
+    bool isTooltip() const { return false; }
+    QRectF frameGeometry() const { return geometry; }
+    QRectF bufferGeometry() const { return buffer; }
+    QRectF expandedGeometry() const { return geometry; }
+    QRectF contentsRect() const { return contents; }
+    QRectF rect() const { return QRectF(QPointF(), geometry.size()); }
+    qreal x() const { return geometry.x(); }
+    qreal y() const { return geometry.y(); }
+};
+struct EffectsHandler {
+    bool x11 = false;
+    int contextActivations = 0;
+    bool xcbConnection() const { return x11; }
+    void makeOpenGLContextCurrent() { ++contextActivations; }
+};
+EffectsHandler handler;
+EffectsHandler *effects = &handler;
+
+// @DATA@
+
+class BlurEffect {
+public:
+    int m_expandSize = 16;
+    std::unordered_map<EffectWindow *, BlurEffectData> m_windows;
+    bool shouldNotBlur(const EffectWindow *w) const { return w->excluded; }
+    bool shouldForceBlur(const EffectWindow *w) const { return w->forced; }
+    bool isFirefoxWindowValid(EffectWindow *w) { return w->firefox; }
+    Region applyBlurRegion(EffectWindow *w, bool = false) { return w->firefoxRegion; }
+    bool decorationSupportsBlurBehind(const EffectWindow *w) const;
+    Region decorationBlurRegion(const EffectWindow *w) const;
+    Region blurRegion(EffectWindow *w, bool noRoundedCorners = false);
+    void updateBlurRegion(EffectWindow *w);
+};
+
+// @FUNCTIONS@
+
+void require(bool condition, const char *message) {
+    if (!condition) throw std::runtime_error(message);
+}
+BackgroundEffectItem *registeredItem(EffectWindow &w) {
+    require(w.item.backgroundItems.size() == 1,
+        "blurred window must register exactly one background-effect scene item");
+    return w.item.backgroundItems.front();
+}
+
+void panelContentAndResize() {
+    EffectWindow panel;
+    panel.geometry = QRectF(0, 1040, 1920, 40);
+    panel.contents = QRectF(0, 0, 1920, 40);
+    BlurProtocol blur{Region(QRect(0, 0, 1920, 40))};
+    SurfaceInterface surface{&blur};
+    panel.windowSurface = &surface;
+    BlurEffect effect;
+    effect.updateBlurRegion(&panel);
+    auto *item = registeredItem(panel);
+    require(item->bounds == QRectF(0, 0, 1920, 40), "taskbar damage bounds must cover its full glass");
+    require(item->expansion == 16, "blur-kernel expansion must reach the scene item");
+    blur.value = Region(QRect(0, 0, 1200, 48));
+    panel.geometry = QRectF(-1920, 1032, 1200, 48);
+    panel.contents = QRectF(0, 0, 1200, 48);
+    effect.m_expandSize = 64;
+    effect.updateBlurRegion(&panel);
+    require(registeredItem(panel) == item, "resizing must reuse rather than duplicate the scene item");
+    require(item->bounds == QRectF(0, 0, 1200, 48), "resized bounds must stay window-local even on a negative-origin output");
+    require(item->expansion == 64, "changing blur strength must update the scene's damage expansion");
+    surface.requestedBlur = nullptr;
+    effect.updateBlurRegion(&panel);
+    require(panel.item.backgroundItems.empty(), "removing blur must unregister its background dependency");
+    require(effect.m_windows.empty(), "unblurred windows must release their cached data");
+}
+
+void decorationOnlyAndExclusion() {
+    EffectWindow window;
+    window.contents = QRectF(8, 30, 784, 562);
+    Decoration decoration{QRectF(0, 0, 800, 600), Region(QRect(0, 0, 800, 600))};
+    window.windowDecoration = &decoration;
+    BlurEffect effect;
+    effect.updateBlurRegion(&window);
+    auto *item = registeredItem(window);
+    require(item->bounds == QRectF(0, 0, 800, 600), "decoration-only glass must register the whole frame's bounds");
+    require(!effect.m_windows.at(&window).content.has_value(), "frame registration must not force content blur");
+    window.excluded = true;
+    effect.updateBlurRegion(&window);
+    require(window.item.backgroundItems.empty(), "excluded windows must not keep a background-effect dependency");
+    window.excluded = false;
+    effect.updateBlurRegion(&window);
+    registeredItem(window);
+    effect.m_windows.erase(&window);
+    require(window.item.backgroundItems.empty(), "erasing window data must destroy its scene item");
+}
+
+void emptyProtocolRegionAndOwnership() {
+    EffectWindow first;
+    EffectWindow second;
+    BlurProtocol blur{Region()}; // Protocol's empty region means the entire window.
+    SurfaceInterface surface{&blur};
+    first.windowSurface = &surface;
+    second.windowSurface = &surface;
+    {
+        BlurEffect effect;
+        effect.updateBlurRegion(&first);
+        effect.updateBlurRegion(&second);
+        require(registeredItem(first)->bounds == QRectF(0, 0, 800, 600), "empty protocol region must cover the whole window");
+        require(registeredItem(first) != registeredItem(second), "each glass window must own a distinct scene item");
+    }
+    require(first.item.backgroundItems.empty() && second.item.backgroundItems.empty(),
+        "unloading the effect must release every background dependency");
+}
+
+void forcedAndInternalRegions() {
+    EffectWindow forced;
+    EffectWindow internal;
+    QWindow native;
+    forced.forced = true;
+    forced.geometry = QRectF(500, 200, 640, 480);
+    forced.contents = QRectF(0, 0, 640, 480);
+    BlurEffect effect;
+    effect.updateBlurRegion(&forced);
+    require(registeredItem(forced)->bounds == QRectF(0, 0, 640, 480), "forced blur bounds must be window-local");
+    internal.internal = &native;
+    native.setProperty("kwin_blur", QVariant::fromValue(Region(QRect(10, 20, 100, 50))));
+    effect.updateBlurRegion(&internal);
+    require(registeredItem(internal)->bounds == QRectF(10, 20, 100, 50), "internal windows must retain explicit blur bounds");
+}
+} // namespace KWin
+
+int main(int argc, char **argv) {
+    QGuiApplication app(argc, argv);
+    try {
+        KWin::panelContentAndResize();
+        KWin::decorationOnlyAndExclusion();
+        KWin::emptyProtocolRegionAndOwnership();
+        KWin::forcedAndInternalRegions();
+    } catch (const std::exception &e) {
+        std::cerr << "FAIL: " << e.what() << '\n';
+        return 1;
+    }
+    std::cout << "PASS: taskbar/frame registration, resize/reconfigure, exclusions, ownership, forced/internal regions\n";
+}

@@ -84,6 +84,7 @@ git clone https://gitgud.io/aeroshell/aeroshell-kwin-components.git aeroshell-kw
 cd aeroshell-kwin-components
 git pull
 git checkout $BRANCH_VERSION
+bash "$CUR_DIR/scripts/apply-aeroglassblur-patch.sh" "$PWD" || exit 1
 cmake -DCMAKE_INSTALL_PREFIX=/usr -DKWIN_BUILD_WAYLAND=ON -B build . || exit 1
 cmake --build build || exit 1
 $SU_CMD cmake --install build || exit 1

@@ -1,0 +1,2 @@
+# Unified-diff context markers on blank lines are required patch syntax.
+patches/** -whitespace
