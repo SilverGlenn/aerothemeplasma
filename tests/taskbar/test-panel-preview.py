@@ -412,7 +412,7 @@ class ControllerTest(unittest.TestCase):
             kwargs["stdout"].write(marker().encode())
             return Mock()
         def monitor(seconds):
-            self.assertEqual(seconds, 0.5)
+            self.assertEqual(seconds, p.GUARDIAN_POLL_SECONDS)
             state = self.state()
             observed_ready.append(state["phase"])
             state["phase"] = "restoring"  # unit stop requested after ready

@@ -2,7 +2,10 @@
 """Opt-in parallel preview staging. Never installs the upstream package identity."""
 import argparse
 import json
+import os
+import re
 import shutil
+import stat
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,12 +24,54 @@ def reject_overlapping_paths(parser, pairs):
             parser.error("source and destination preview paths must not overlap")
 
 
+KEEP_BACKUPS = 3
+SYSTEM_PREFIXES = (Path("/usr"), Path("/etc"), Path("/opt"))
+
+
+def unsafe_destination(destination):
+    """Why a resolved destination must be refused, or None."""
+    if destination == ROOT or destination in ROOT.parents:
+        return "choose an isolated, user-owned directory, not a source/global prefix"
+    if any(destination.is_relative_to(prefix) for prefix in SYSTEM_PREFIXES):
+        return "choose an isolated, user-owned directory, not a source/global prefix"
+    # The nearest existing component decides who can create files there: it must
+    # be ours, or a sticky shared directory such as /tmp.
+    anchor = destination
+    while not anchor.exists():
+        anchor = anchor.parent
+    info = anchor.stat()
+    sticky_shared = bool(info.st_mode & stat.S_ISVTX) and bool(info.st_mode & stat.S_IWOTH)
+    if info.st_uid != os.getuid() and not sticky_shared:
+        return f"{anchor} is not owned by you; choose a user-owned directory"
+    return None
+
+
+def prune_backups(destination):
+    """Keep the newest KEEP_BACKUPS backups of this destination, delete older ones.
+
+    Only entries this script created (same parent, exact name + timestamp
+    pattern) are considered; symlinks are never followed or removed.
+    """
+    pattern = re.compile(re.escape(destination.name) + r"\.backup-\d{8}T\d{12}Z")
+    backups = sorted(path for path in destination.parent.iterdir()
+                     if pattern.fullmatch(path.name) and path.parent == destination.parent)
+    for old in backups[:-KEEP_BACKUPS]:
+        if old.is_symlink():
+            continue
+        if old.is_dir():
+            shutil.rmtree(old)
+        else:
+            old.unlink()
+        print("Removed old backup:", old)
+
+
 def replace_with_backup(source, destination):
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         backup = destination.with_name(destination.name + ".backup-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"))
         destination.rename(backup)
         print("Backup:", backup)
+        prune_backups(destination)
     if source.is_dir():
         shutil.copytree(source, destination)
     else:
@@ -42,8 +87,9 @@ def main():
     parser.add_argument("--confirm", action="store_true", help="required for optional prefix install/uninstall")
     args = parser.parse_args()
     destination = args.directory.expanduser().resolve()
-    if destination == ROOT or destination in ROOT.parents or str(destination).startswith(("/usr", "/etc", "/opt")):
-        parser.error("choose an isolated, user-owned directory, not a source/global prefix")
+    problem = unsafe_destination(destination)
+    if problem:
+        parser.error(problem)
     package = destination / "share/plasma/plasmoids" / ID
     plugin = destination / "plugins/plasma/applets" / LIBRARY
     if args.action == "stage":
