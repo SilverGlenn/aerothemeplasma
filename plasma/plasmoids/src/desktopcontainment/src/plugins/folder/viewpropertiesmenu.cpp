@@ -13,6 +13,23 @@
 #include <KDirModel>
 #include <KLocalizedString>
 
+namespace
+{
+// Values reported by the getters while none of the actions in the corresponding group is checked yet
+// (e.g. when QML reads a property before the initial configuration value was applied).
+// They mirror the defaults in contents/config/main.xml.
+constexpr int DefaultArrangement = 0; // Left to Right
+constexpr int DefaultAlignment = 0; // Left
+constexpr int DefaultSortMode = int(KDirModel::Name);
+constexpr int DefaultIconSize = 2;
+
+int checkedActionData(const QActionGroup *group, int fallback)
+{
+    const QAction *action = group->checkedAction();
+    return action ? action->data().toInt() : fallback;
+}
+} // namespace
+
 ViewPropertiesMenu::ViewPropertiesMenu(QObject *parent)
     : QObject(parent)
 {
@@ -159,7 +176,7 @@ void ViewPropertiesMenu::setShowIconSizeActions(bool show)
 
 int ViewPropertiesMenu::arrangement() const
 {
-    return m_arrangement->checkedAction()->data().toInt();
+    return checkedActionData(m_arrangement, DefaultArrangement);
 }
 
 void ViewPropertiesMenu::setArrangement(int arrangement)
@@ -177,7 +194,7 @@ void ViewPropertiesMenu::setArrangement(int arrangement)
 
 int ViewPropertiesMenu::alignment() const
 {
-    return m_alignment->checkedAction()->data().toInt();
+    return checkedActionData(m_alignment, DefaultAlignment);
 }
 
 void ViewPropertiesMenu::setAlignment(int alignment)
@@ -232,7 +249,7 @@ void ViewPropertiesMenu::setLockedEnabled(bool enabled)
 
 int ViewPropertiesMenu::sortMode() const
 {
-    return m_sortMode->checkedAction()->data().toInt();
+    return checkedActionData(m_sortMode, DefaultSortMode);
 }
 
 void ViewPropertiesMenu::setSortMode(int sortMode)
@@ -274,7 +291,7 @@ void ViewPropertiesMenu::setSortDirsFirst(bool sortDirsFirst)
 
 int ViewPropertiesMenu::iconSize() const
 {
-    return m_iconSize->checkedAction()->data().toInt();
+    return checkedActionData(m_iconSize, DefaultIconSize);
 }
 
 void ViewPropertiesMenu::setIconSize(int iconSize)

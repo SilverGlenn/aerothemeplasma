@@ -15,4 +15,5 @@ class ViewPropertiesMenuTest : public QObject
 
 private Q_SLOTS:
     void shouldHaveDefaultValues();
+    void shouldNotCrashWithoutCheckedActions();
 };
