@@ -1,5 +1,5 @@
 [Outline]
-QmlPath=aeroshell/outline/plasma/outline.qml
+QmlPath=aerothemeplasma/outline/outline.qml
 
 [TabBox]
 ShowDesktopMode=1
@@ -11,6 +11,9 @@ LayoutName=flip3d
 
 [MouseBindings]
 CommandTitlebarWheel=Nothing
+
+[Plugins]
+taskbarresizeguardEnabled=true
 
 [org.kde.kdecoration2]
 ButtonsOnLeft=M
